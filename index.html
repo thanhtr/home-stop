@@ -237,11 +237,6 @@
   <div class="dlg-inner">
     <h3>Settings</h3>
     <div class="field">
-      <label for="apiKeyInput">Digitransit subscription key</label>
-      <input id="apiKeyInput" type="password" autocomplete="off" placeholder="e.g. 3f2a1b...">
-      <div class="hint">Free key from <a href="https://digitransit.fi/en/developers/api-registration/" target="_blank" rel="noopener">digitransit.fi</a> (routing API product).</div>
-    </div>
-    <div class="field">
       <label for="stopId1">Stop 1 GTFS ID</label>
       <input id="stopId1" type="text" placeholder="HSL:1234567">
     </div>
@@ -267,7 +262,6 @@
 
 <script>
 (function () {
-  const GRAPHQL_URL = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
   const STORAGE_KEY = "hsl-home-stop-settings";
   const DEFAULT_INTERVAL = 30;
 
@@ -293,7 +287,6 @@
 
   function openSettings() {
     const s = loadSettings();
-    $("apiKeyInput").value = s.apiKey || "";
     $("stopId1").value = s.stopId1 || "";
     $("stopId2").value = s.stopId2 || "";
     $("intervalInput").value = s.interval || DEFAULT_INTERVAL;
@@ -306,7 +299,6 @@
 
   $("saveSettings").addEventListener("click", () => {
     const settings = {
-      apiKey: $("apiKeyInput").value.trim(),
       stopId1: $("stopId1").value.trim(),
       stopId2: $("stopId2").value.trim(),
       interval: parseInt($("intervalInput").value, 10) || DEFAULT_INTERVAL,
@@ -316,43 +308,13 @@
     loadAndRender();
   });
 
-  const QUERY = `
-    query StopTimes($id: String!) {
-      stop(id: $id) {
-        gtfsId
-        name
-        code
-        desc
-        stoptimesWithoutPatterns(numberOfDepartures: 8, omitNonPickups: true) {
-          scheduledDeparture
-          realtimeDeparture
-          realtime
-          serviceDay
-          headsign
-          trip {
-            route {
-              shortName
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  async function fetchStop(gtfsId, apiKey) {
-    const res = await fetch(GRAPHQL_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "digitransit-subscription-key": apiKey,
-      },
-      body: JSON.stringify({ query: QUERY, variables: { id: gtfsId } }),
-    });
+  async function fetchStop(gtfsId) {
+    const res = await fetch(`/api/departures?stop=${encodeURIComponent(gtfsId)}`);
+    const json = await res.json();
 
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status} fetching ${gtfsId}`);
+      throw new Error(json.error || `HTTP ${res.status} fetching ${gtfsId}`);
     }
-    const json = await res.json();
     if (json.errors && json.errors.length) {
       throw new Error(json.errors.map((e) => e.message).join("; "));
     }
@@ -432,11 +394,11 @@
     const settings = loadSettings();
     errorBox.innerHTML = "";
 
-    if (!settings.apiKey || !settings.stopId1) {
+    if (!settings.stopId1) {
       stopsEl.innerHTML = "";
       const placeholder = document.createElement("div");
       placeholder.className = "placeholder";
-      placeholder.textContent = "Add your Digitransit API key and stop IDs in settings (⚙) to get started.";
+      placeholder.textContent = "Add your stop IDs in settings (⚙) to get started.";
       stopsEl.appendChild(placeholder);
       statusLine.textContent = "Not configured";
       return;
@@ -446,7 +408,7 @@
     statusLine.textContent = "Refreshing…";
 
     try {
-      const stops = await Promise.all(ids.map((id) => fetchStop(id, settings.apiKey)));
+      const stops = await Promise.all(ids.map((id) => fetchStop(id)));
       stopsEl.innerHTML = "";
       stops.forEach((stop, i) => {
         if (!stop) {
