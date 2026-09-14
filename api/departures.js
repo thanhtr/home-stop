@@ -31,9 +31,9 @@ const QUERY = `
   }
 `;
 
-async function resolveGtfsId(codeOrId, apiKey) {
+async function resolveGtfsId(codeOrId, apiKey, debug) {
   if (codeOrId.includes(":")) {
-    return codeOrId;
+    return { gtfsId: codeOrId };
   }
 
   const url = `${GEOCODING_URL}?text=${encodeURIComponent(codeOrId)}&layers=stop&size=10`;
@@ -44,26 +44,40 @@ async function resolveGtfsId(codeOrId, apiKey) {
     throw new Error(`Geocoding lookup failed with HTTP ${res.status}`);
   }
   const json = await res.json();
-  const features = (json.features || []).filter((f) => f.properties && f.properties.gid);
+  const rawFeatures = json.features || [];
+  const features = rawFeatures.filter((f) => f.properties && f.properties.gid);
 
   const match =
     features.find((f) => (f.properties.code || "").toUpperCase() === codeOrId.toUpperCase()) ||
     features[0];
 
+  const debugInfo = debug
+    ? {
+        featureCount: rawFeatures.length,
+        features: rawFeatures.map((f) => f.properties),
+      }
+    : undefined;
+
   if (!match) {
-    throw new Error(`No stop found matching code "${codeOrId}"`);
+    const err = new Error(`No stop found matching code "${codeOrId}"`);
+    err.debugInfo = debugInfo;
+    throw err;
   }
 
   const [source, , rawId] = match.properties.gid.split(":");
   const feed = SOURCE_TO_FEED[source];
   if (!feed || !rawId) {
-    throw new Error(`Could not resolve gtfsId for code "${codeOrId}" (gid: ${match.properties.gid})`);
+    const err = new Error(`Could not resolve gtfsId for code "${codeOrId}" (gid: ${match.properties.gid})`);
+    err.debugInfo = debugInfo;
+    throw err;
   }
-  return `${feed}:${rawId}`;
+  return { gtfsId: `${feed}:${rawId}`, debugInfo };
 }
 
 module.exports = async function handler(req, res) {
   const stopParam = req.query.stop;
+  const debug = req.query.debug === "1";
+
   if (!stopParam) {
     res.status(400).json({ error: "Missing 'stop' query parameter" });
     return;
@@ -76,7 +90,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const gtfsId = await resolveGtfsId(stopParam, apiKey);
+    const resolved = await resolveGtfsId(stopParam, apiKey, debug);
 
     const upstream = await fetch(GRAPHQL_URL, {
       method: "POST",
@@ -84,12 +98,19 @@ module.exports = async function handler(req, res) {
         "Content-Type": "application/json",
         "digitransit-subscription-key": apiKey,
       },
-      body: JSON.stringify({ query: QUERY, variables: { id: gtfsId } }),
+      body: JSON.stringify({ query: QUERY, variables: { id: resolved.gtfsId } }),
     });
 
     const data = await upstream.json();
+    if (debug) {
+      data.debug = { resolvedGtfsId: resolved.gtfsId, geocoding: resolved.debugInfo };
+    }
     res.status(upstream.status).json(data);
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    const payload = { error: err.message };
+    if (debug && err.debugInfo) {
+      payload.debug = { geocoding: err.debugInfo };
+    }
+    res.status(502).json(payload);
   }
 };
