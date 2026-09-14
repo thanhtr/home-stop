@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vaaralan Talkootie — HSL Stops</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1a1c20;
+    --muted: #6b7280;
+    --border: #e3e5e8;
+    --accent: #007ac9; /* HSL blue */
+    --accent-bg: #eaf4fb;
+    --realtime: #0a8a3f;
+    --danger: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111317;
+      --card: #1b1e23;
+      --text: #edeef0;
+      --muted: #9aa0a8;
+      --border: #2b2f36;
+      --accent: #4db8ff;
+      --accent-bg: #16283a;
+      --realtime: #34d17c;
+      --danger: #ff6b6b;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 20px 16px 60px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0;
+    line-height: 1.3;
+  }
+  h1 small {
+    display: block;
+    font-weight: 400;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  button.icon-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    width: 40px;
+    height: 40px;
+    font-size: 17px;
+    cursor: pointer;
+  }
+  button.icon-btn:active { transform: scale(0.96); }
+
+  .status-line {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  .stop-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .stop-card h2 {
+    font-size: 16px;
+    margin: 0 0 2px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .stop-card h2 .code {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .stop-card .desc {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  ul.departures { list-style: none; margin: 0; padding: 0; }
+  ul.departures li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+  }
+  ul.departures li:first-child { border-top: none; }
+
+  .line-badge {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    min-width: 36px;
+    text-align: center;
+    padding: 4px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .headsign {
+    flex: 1;
+    font-size: 14px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .eta {
+    font-size: 14px;
+    font-weight: 600;
+    text-align: right;
+    min-width: 56px;
+    flex-shrink: 0;
+  }
+  .eta.realtime { color: var(--realtime); }
+  .eta small {
+    display: block;
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .empty, .placeholder {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 8px 0;
+  }
+  .error-box {
+    background: var(--accent-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--danger);
+    margin-bottom: 16px;
+  }
+
+  dialog#settings {
+    border: none;
+    border-radius: 14px;
+    padding: 0;
+    background: var(--card);
+    color: var(--text);
+    width: min(440px, 92vw);
+  }
+  dialog#settings::backdrop { background: rgba(0,0,0,0.5); }
+  .dlg-inner { padding: 20px; }
+  .dlg-inner h3 { margin: 0 0 14px; font-size: 16px; }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .field input {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+  }
+  .field .hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .field .hint a { color: var(--accent); }
+  .dlg-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .btn {
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Vaaralan Talkootie<small>Next HSL departures</small></h1>
+    <div class="header-actions">
+      <button class="icon-btn" id="refreshBtn" title="Refresh now">↻</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <div class="status-line" id="statusLine">Loading…</div>
+  <div id="errorBox"></div>
+  <div id="stops"></div>
+</div>
+
+<dialog id="settings">
+  <div class="dlg-inner">
+    <h3>Settings</h3>
+    <div class="field">
+      <label for="apiKeyInput">Digitransit subscription key</label>
+      <input id="apiKeyInput" type="password" autocomplete="off" placeholder="e.g. 3f2a1b...">
+      <div class="hint">Free key from <a href="https://digitransit.fi/en/developers/api-registration/" target="_blank" rel="noopener">digitransit.fi</a> (routing API product).</div>
+    </div>
+    <div class="field">
+      <label for="stopId1">Stop 1 GTFS ID</label>
+      <input id="stopId1" type="text" placeholder="HSL:1234567">
+    </div>
+    <div class="field">
+      <label for="stopId2">Stop 2 GTFS ID</label>
+      <input id="stopId2" type="text" placeholder="HSL:1234568">
+      <div class="hint">
+        Find stop IDs by searching "Vaaralan Talkootie" on
+        <a href="https://reittiopas.hsl.fi/haku/Vaaralan%20Talkootie" target="_blank" rel="noopener">reittiopas.hsl.fi</a>
+        — open a stop and copy the ID (e.g. HSL:1234567) shown on its page/URL.
+      </div>
+    </div>
+    <div class="field">
+      <label for="intervalInput">Refresh interval (seconds)</label>
+      <input id="intervalInput" type="number" min="10" step="5" placeholder="30">
+    </div>
+    <div class="dlg-actions">
+      <button class="btn" id="closeSettings">Cancel</button>
+      <button class="btn primary" id="saveSettings">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  const GRAPHQL_URL = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
+  const STORAGE_KEY = "hsl-home-stop-settings";
+  const DEFAULT_INTERVAL = 30;
+
+  const $ = (id) => document.getElementById(id);
+  const stopsEl = $("stops");
+  const statusLine = $("statusLine");
+  const errorBox = $("errorBox");
+  const settingsDialog = $("settings");
+
+  let timer = null;
+
+  function loadSettings() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveSettings(settings) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  }
+
+  function openSettings() {
+    const s = loadSettings();
+    $("apiKeyInput").value = s.apiKey || "";
+    $("stopId1").value = s.stopId1 || "";
+    $("stopId2").value = s.stopId2 || "";
+    $("intervalInput").value = s.interval || DEFAULT_INTERVAL;
+    settingsDialog.showModal();
+  }
+
+  $("settingsBtn").addEventListener("click", openSettings);
+  $("closeSettings").addEventListener("click", () => settingsDialog.close());
+  $("refreshBtn").addEventListener("click", () => loadAndRender());
+
+  $("saveSettings").addEventListener("click", () => {
+    const settings = {
+      apiKey: $("apiKeyInput").value.trim(),
+      stopId1: $("stopId1").value.trim(),
+      stopId2: $("stopId2").value.trim(),
+      interval: parseInt($("intervalInput").value, 10) || DEFAULT_INTERVAL,
+    };
+    saveSettings(settings);
+    settingsDialog.close();
+    loadAndRender();
+  });
+
+  const QUERY = `
+    query StopTimes($id: String!) {
+      stop(id: $id) {
+        gtfsId
+        name
+        code
+        desc
+        stoptimesWithoutPatterns(numberOfDepartures: 8, omitNonPickups: true) {
+          scheduledDeparture
+          realtimeDeparture
+          realtime
+          serviceDay
+          headsign
+          trip {
+            route {
+              shortName
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  async function fetchStop(gtfsId, apiKey) {
+    const res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "digitransit-subscription-key": apiKey,
+      },
+      body: JSON.stringify({ query: QUERY, variables: { id: gtfsId } }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} fetching ${gtfsId}`);
+    }
+    const json = await res.json();
+    if (json.errors && json.errors.length) {
+      throw new Error(json.errors.map((e) => e.message).join("; "));
+    }
+    return json.data && json.data.stop;
+  }
+
+  function formatEta(epochSeconds) {
+    const now = Date.now() / 1000;
+    const diffMin = Math.round((epochSeconds - now) / 60);
+    const t = new Date(epochSeconds * 1000);
+    const clock = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (diffMin <= 0) return { big: "Now", small: clock };
+    if (diffMin < 60) return { big: `${diffMin} min`, small: clock };
+    return { big: clock, small: "" };
+  }
+
+  function renderStopCard(stop) {
+    const card = document.createElement("div");
+    card.className = "stop-card";
+
+    const h2 = document.createElement("h2");
+    h2.textContent = stop.name || "Unknown stop";
+    if (stop.code) {
+      const code = document.createElement("span");
+      code.className = "code";
+      code.textContent = stop.code;
+      h2.appendChild(code);
+    }
+    card.appendChild(h2);
+
+    if (stop.desc) {
+      const desc = document.createElement("div");
+      desc.className = "desc";
+      desc.textContent = stop.desc;
+      card.appendChild(desc);
+    }
+
+    const list = document.createElement("ul");
+    list.className = "departures";
+
+    const departures = stop.stoptimesWithoutPatterns || [];
+    if (!departures.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No upcoming departures.";
+      card.appendChild(empty);
+    } else {
+      departures.forEach((dep) => {
+        const li = document.createElement("li");
+
+        const badge = document.createElement("span");
+        badge.className = "line-badge";
+        badge.textContent = (dep.trip && dep.trip.route && dep.trip.route.shortName) || "?";
+        li.appendChild(badge);
+
+        const headsign = document.createElement("span");
+        headsign.className = "headsign";
+        headsign.textContent = dep.headsign || "";
+        li.appendChild(headsign);
+
+        const epoch = dep.serviceDay + (dep.realtime ? dep.realtimeDeparture : dep.scheduledDeparture);
+        const eta = formatEta(epoch);
+        const etaEl = document.createElement("span");
+        etaEl.className = "eta" + (dep.realtime ? " realtime" : "");
+        etaEl.innerHTML = `${eta.big}${eta.small ? `<small>${eta.small}</small>` : ""}`;
+        li.appendChild(etaEl);
+
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+    }
+
+    return card;
+  }
+
+  async function loadAndRender() {
+    const settings = loadSettings();
+    errorBox.innerHTML = "";
+
+    if (!settings.apiKey || !settings.stopId1) {
+      stopsEl.innerHTML = "";
+      const placeholder = document.createElement("div");
+      placeholder.className = "placeholder";
+      placeholder.textContent = "Add your Digitransit API key and stop IDs in settings (⚙) to get started.";
+      stopsEl.appendChild(placeholder);
+      statusLine.textContent = "Not configured";
+      return;
+    }
+
+    const ids = [settings.stopId1, settings.stopId2].filter(Boolean);
+    statusLine.textContent = "Refreshing…";
+
+    try {
+      const stops = await Promise.all(ids.map((id) => fetchStop(id, settings.apiKey)));
+      stopsEl.innerHTML = "";
+      stops.forEach((stop, i) => {
+        if (!stop) {
+          const err = document.createElement("div");
+          err.className = "error-box";
+          err.textContent = `Stop "${ids[i]}" not found. Check the GTFS ID in settings.`;
+          stopsEl.appendChild(err);
+          return;
+        }
+        stopsEl.appendChild(renderStopCard(stop));
+      });
+      statusLine.textContent = "Updated " + new Date().toLocaleTimeString();
+    } catch (err) {
+      errorBox.innerHTML = `<div class="error-box">Failed to load departures: ${err.message}</div>`;
+      statusLine.textContent = "Update failed";
+    }
+  }
+
+  function scheduleRefresh() {
+    if (timer) clearInterval(timer);
+    const settings = loadSettings();
+    const seconds = settings.interval || DEFAULT_INTERVAL;
+    timer = setInterval(loadAndRender, seconds * 1000);
+  }
+
+  loadAndRender();
+  scheduleRefresh();
+})();
+</script>
+</body>
+</html>
