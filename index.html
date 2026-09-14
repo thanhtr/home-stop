@@ -237,16 +237,14 @@
   <div class="dlg-inner">
     <h3>Settings</h3>
     <div class="field">
-      <label for="stopId1">Stop 1 GTFS ID</label>
-      <input id="stopId1" type="text" placeholder="HSL:1234567">
+      <label for="stopId1">Stop 1 (code or gtfsId)</label>
+      <input id="stopId1" type="text" placeholder="V9305">
     </div>
     <div class="field">
-      <label for="stopId2">Stop 2 GTFS ID</label>
-      <input id="stopId2" type="text" placeholder="HSL:1234568">
+      <label for="stopId2">Stop 2 (code or gtfsId)</label>
+      <input id="stopId2" type="text" placeholder="V9306">
       <div class="hint">
-        Find stop IDs by searching "Vaaralan Talkootie" on
-        <a href="https://reittiopas.hsl.fi/haku/Vaaralan%20Talkootie" target="_blank" rel="noopener">reittiopas.hsl.fi</a>
-        — open a stop and copy the ID (e.g. HSL:1234567) shown on its page/URL.
+        A public HSL stop code (e.g. V9305) works directly, or use a full gtfsId (e.g. HSL:1174509).
       </div>
     </div>
     <div class="field">
@@ -264,6 +262,7 @@
 (function () {
   const STORAGE_KEY = "hsl-home-stop-settings";
   const DEFAULT_INTERVAL = 30;
+  const DEFAULTS = { stopId1: "V9305", stopId2: "V9306" };
 
   const $ = (id) => document.getElementById(id);
   const stopsEl = $("stops");
@@ -275,10 +274,12 @@
 
   function loadSettings() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (stored) return stored;
     } catch (e) {
-      return {};
+      // ignore malformed storage
     }
+    return { ...DEFAULTS };
   }
 
   function saveSettings(settings) {

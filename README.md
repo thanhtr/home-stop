@@ -1,10 +1,12 @@
 # home-stop
-HSL home stop — a static page (with one tiny serverless function) showing live departures for Vaaralan Talkootie (both stops).
+HSL home stop — a static page (with one tiny serverless function) showing live departures for Vaaralan Talkootie (both stops: V9305, V9306).
 
 ## How it works
 
 - `index.html` is the whole UI: no build step, deploy as-is on Vercel.
-- `api/departures.js` is a Vercel serverless function that calls the Digitransit routing API using an `API_KEY` environment variable, so the key never reaches the browser.
+- `api/departures.js` is a Vercel serverless function that calls the Digitransit routing API using an `API_KEY` environment variable,
+  so the key never reaches the browser. It accepts either a public HSL stop code (e.g. `V9305`) or a full `gtfsId` (e.g. `HSL:1174509`)
+  in the `stop` query parameter — a bare code is resolved to a `gtfsId` via the Digitransit geocoding API first.
 
 ## Setup
 
@@ -13,7 +15,5 @@ HSL home stop — a static page (with one tiny serverless function) showing live
    to the Vercel runtime — it must also exist as a Vercel environment variable (either add it directly in Vercel, or have your deploy
    workflow pass it through).
 2. Deploy this repo to Vercel.
-3. Open the deployed page and click the ⚙ settings button.
-4. Find the GTFS stop IDs for both Vaaralan Talkootie stops by searching
-   https://reittiopas.hsl.fi/haku/Vaaralan%20Talkootie and copying each stop's ID (e.g. `HSL:1234567`).
-5. Save — the stop IDs are stored in your browser's `localStorage` and the page starts polling `/api/departures` for live departures.
+3. Open the deployed page. It defaults to stops `V9305` and `V9306`; change them via the ⚙ settings button if needed — the values are
+   stored in your browser's `localStorage`.
