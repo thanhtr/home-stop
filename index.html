@@ -49,64 +49,64 @@
     background: #ffffff;
     border: 1px solid #e3e5e8;
     border-radius: 14px;
-    padding: 16px;
+    padding: 20px;
     margin-bottom: 16px;
   }
   .stop-card h2 {
-    font-size: 16px;
-    margin: 0 0 2px;
+    font-size: 26px;
+    margin: 0 0 4px;
   }
   .stop-card h2 .code {
-    font-size: 12px;
+    font-size: 15px;
     font-weight: normal;
     color: #6b7280;
-    margin-left: 6px;
+    margin-left: 8px;
   }
   .stop-card .desc {
-    font-size: 12px;
+    font-size: 15px;
     color: #6b7280;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
   }
 
   table.departures { width: 100%; border-collapse: collapse; }
   table.departures td {
-    padding: 9px 0;
+    padding: 14px 0;
     border-top: 1px solid #e3e5e8;
-    font-size: 14px;
+    font-size: 22px;
     vertical-align: middle;
   }
   table.departures tr:first-child td { border-top: none; }
 
-  .line-badge-cell { width: 46px; }
+  .line-badge-cell { width: 68px; }
   .line-badge {
     background: #007ac9;
     color: #ffffff;
     font-weight: bold;
-    font-size: 13px;
+    font-size: 20px;
     display: inline-block;
-    min-width: 30px;
+    min-width: 46px;
     text-align: center;
-    padding: 4px 6px;
-    border-radius: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
   }
-  .headsign { padding-left: 10px; padding-right: 10px; }
+  .headsign { padding-left: 14px; padding-right: 14px; }
   .eta {
     font-weight: bold;
     text-align: right;
     white-space: nowrap;
-    width: 70px;
+    width: 96px;
   }
   .eta.realtime { color: #0a8a3f; }
   .eta-small {
     display: block;
     font-weight: normal;
-    font-size: 11px;
+    font-size: 14px;
     color: #6b7280;
   }
 
   .empty, .placeholder {
     color: #6b7280;
-    font-size: 13px;
+    font-size: 15px;
     padding: 8px 0;
   }
   .error-box {
@@ -114,9 +114,31 @@
     border: 1px solid #e3e5e8;
     border-radius: 10px;
     padding: 12px 14px;
-    font-size: 13px;
+    font-size: 14px;
     color: #c62828;
     margin-bottom: 16px;
+  }
+
+  .weather-temp {
+    font-size: 56px;
+    font-weight: bold;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .weather-desc {
+    font-size: 20px;
+    color: #333333;
+    margin-bottom: 14px;
+  }
+  .weather-meta {
+    font-size: 15px;
+    color: #6b7280;
+    line-height: 1.6;
+  }
+  .weather-updated {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 14px;
   }
 </style>
 </head>
@@ -129,17 +151,19 @@
   <div class="status-line" id="statusLine">Loading&#8230;</div>
   <div class="stops-row">
     <div class="stop-col col-first" id="stopCol0"></div>
-    <div class="stop-col col-last" id="stopCol1"></div>
+    <div class="stop-col col-last" id="weatherCol"></div>
   </div>
 </div>
 
 <script>
 (function () {
-  var STOP_IDS = ["V9305", "V9306"];
-  var REFRESH_SECONDS = 30;
+  var STOP_IDS = ["V9305"];
+  var DEPARTURES_REFRESH_SECONDS = 30;
+  var WEATHER_REFRESH_SECONDS = 3600;
 
   function byId(id) { return document.getElementById(id); }
-  var stopCols = [byId("stopCol0"), byId("stopCol1")];
+  var stopCols = [byId("stopCol0")];
+  var weatherCol = byId("weatherCol");
   var statusLine = byId("statusLine");
 
   function setText(el, text) {
@@ -147,9 +171,9 @@
     el.appendChild(document.createTextNode(text));
   }
 
-  function fetchStop(gtfsId, callback) {
+  function getJson(url, callback) {
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", "/api/departures?stop=" + encodeURIComponent(gtfsId), true);
+    xhr.open("GET", url, true);
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       var json = null;
@@ -163,6 +187,20 @@
         callback(new Error((json && json.error) || ("HTTP " + xhr.status)));
         return;
       }
+      callback(null, json);
+    };
+    xhr.onerror = function () {
+      callback(new Error("Network error"));
+    };
+    xhr.send();
+  }
+
+  function fetchStop(gtfsId, callback) {
+    getJson("/api/departures?stop=" + encodeURIComponent(gtfsId), function (err, json) {
+      if (err) {
+        callback(err);
+        return;
+      }
       if (json.errors && json.errors.length) {
         var msgs = [];
         for (var i = 0; i < json.errors.length; i++) {
@@ -172,11 +210,17 @@
         return;
       }
       callback(null, json.data ? json.data.stop : null);
-    };
-    xhr.onerror = function () {
-      callback(new Error("Network error"));
-    };
-    xhr.send();
+    });
+  }
+
+  function fetchWeather(callback) {
+    getJson("/api/weather", function (err, json) {
+      if (err) {
+        callback(err);
+        return;
+      }
+      callback(null, json);
+    });
   }
 
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
@@ -189,6 +233,11 @@
     if (diffMin <= 0) return { big: "Now", small: clock };
     if (diffMin < 60) return { big: diffMin + " min", small: clock };
     return { big: clock, small: "" };
+  }
+
+  function currentTimeStr() {
+    var now = new Date();
+    return pad2(now.getHours()) + ":" + pad2(now.getMinutes()) + ":" + pad2(now.getSeconds());
   }
 
   function renderStopCard(stop) {
@@ -261,7 +310,60 @@
     return card;
   }
 
-  function loadAndRender() {
+  function renderWeatherCard(weather) {
+    var card = document.createElement("div");
+    card.className = "stop-card";
+
+    var h2 = document.createElement("h2");
+    h2.appendChild(document.createTextNode("Weather"));
+    if (weather.location) {
+      var loc = document.createElement("span");
+      loc.className = "code";
+      loc.appendChild(document.createTextNode(weather.location));
+      h2.appendChild(loc);
+    }
+    card.appendChild(h2);
+
+    var current = weather.current || {};
+
+    var temp = document.createElement("div");
+    temp.className = "weather-temp";
+    var tempValue = typeof current.temperature === "number" ? Math.round(current.temperature) + "°C" : "--";
+    temp.appendChild(document.createTextNode(tempValue));
+    card.appendChild(temp);
+
+    var desc = document.createElement("div");
+    desc.className = "weather-desc";
+    desc.appendChild(document.createTextNode(current.description || "Unknown"));
+    card.appendChild(desc);
+
+    var meta = document.createElement("div");
+    meta.className = "weather-meta";
+    var metaLines = [];
+    if (typeof current.apparentTemperature === "number") {
+      metaLines.push("Feels like " + Math.round(current.apparentTemperature) + "°C");
+    }
+    if (typeof current.windSpeed === "number") {
+      metaLines.push("Wind " + Math.round(current.windSpeed) + " m/s");
+    }
+    if (typeof current.humidity === "number") {
+      metaLines.push("Humidity " + Math.round(current.humidity) + "%");
+    }
+    for (var i = 0; i < metaLines.length; i++) {
+      if (i > 0) meta.appendChild(document.createElement("br"));
+      meta.appendChild(document.createTextNode(metaLines[i]));
+    }
+    card.appendChild(meta);
+
+    var updated = document.createElement("div");
+    updated.className = "weather-updated";
+    updated.appendChild(document.createTextNode("Updated " + currentTimeStr()));
+    card.appendChild(updated);
+
+    return card;
+  }
+
+  function loadDepartures() {
     setText(statusLine, "Refreshing...");
 
     var results = new Array(STOP_IDS.length);
@@ -296,9 +398,7 @@
         col.appendChild(renderStopCard(r.stop));
       }
 
-      var now = new Date();
-      var timeStr = pad2(now.getHours()) + ":" + pad2(now.getMinutes()) + ":" + pad2(now.getSeconds());
-      setText(statusLine, (hadError ? "Updated with errors " : "Updated ") + timeStr);
+      setText(statusLine, (hadError ? "Updated with errors " : "Updated ") + currentTimeStr());
     }
 
     var makeCallback = function (index) {
@@ -313,8 +413,24 @@
     }
   }
 
-  loadAndRender();
-  setInterval(loadAndRender, REFRESH_SECONDS * 1000);
+  function loadWeather() {
+    fetchWeather(function (err, weather) {
+      weatherCol.innerHTML = "";
+      if (err) {
+        var errBox = document.createElement("div");
+        errBox.className = "error-box";
+        errBox.appendChild(document.createTextNode("Weather: " + err.message));
+        weatherCol.appendChild(errBox);
+        return;
+      }
+      weatherCol.appendChild(renderWeatherCard(weather));
+    });
+  }
+
+  loadDepartures();
+  loadWeather();
+  setInterval(loadDepartures, DEPARTURES_REFRESH_SECONDS * 1000);
+  setInterval(loadWeather, WEATHER_REFRESH_SECONDS * 1000);
 })();
 </script>
 </body>
