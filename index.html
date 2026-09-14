@@ -13,7 +13,18 @@
     font-family: Helvetica, Arial, sans-serif;
     padding: 20px 16px 60px;
   }
-  .wrap { max-width: 720px; margin: 0 auto; }
+  .wrap { width: 100%; }
+
+  .stops-row { overflow: hidden; }
+  .stop-col {
+    width: 48%;
+  }
+  .stop-col.col-first { float: left; }
+  .stop-col.col-last { float: right; }
+
+  @media (max-width: 480px) {
+    .stop-col { width: 100%; float: none; }
+  }
 
   .header { margin-bottom: 18px; }
   .header h1 {
@@ -116,7 +127,10 @@
   </div>
 
   <div class="status-line" id="statusLine">Loading&#8230;</div>
-  <div id="stops"></div>
+  <div class="stops-row">
+    <div class="stop-col col-first" id="stopCol0"></div>
+    <div class="stop-col col-last" id="stopCol1"></div>
+  </div>
 </div>
 
 <script>
@@ -125,7 +139,7 @@
   var REFRESH_SECONDS = 30;
 
   function byId(id) { return document.getElementById(id); }
-  var stopsEl = byId("stops");
+  var stopCols = [byId("stopCol0"), byId("stopCol1")];
   var statusLine = byId("statusLine");
 
   function setText(el, text) {
@@ -257,17 +271,18 @@
       remaining -= 1;
       if (remaining > 0) return;
 
-      stopsEl.innerHTML = "";
       var hadError = false;
 
       for (var i = 0; i < results.length; i++) {
+        var col = stopCols[i];
+        col.innerHTML = "";
         var r = results[i];
         if (r.error) {
           hadError = true;
           var err = document.createElement("div");
           err.className = "error-box";
           err.appendChild(document.createTextNode('Stop "' + STOP_IDS[i] + '": ' + r.error.message));
-          stopsEl.appendChild(err);
+          col.appendChild(err);
           continue;
         }
         if (!r.stop) {
@@ -275,10 +290,10 @@
           var err2 = document.createElement("div");
           err2.className = "error-box";
           err2.appendChild(document.createTextNode('Stop "' + STOP_IDS[i] + '" not found.'));
-          stopsEl.appendChild(err2);
+          col.appendChild(err2);
           continue;
         }
-        stopsEl.appendChild(renderStopCard(r.stop));
+        col.appendChild(renderStopCard(r.stop));
       }
 
       var now = new Date();
