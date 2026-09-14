@@ -18,7 +18,7 @@ const QUERY = `
       name
       code
       desc
-      stoptimesWithoutPatterns(numberOfDepartures: 8, omitNonPickups: true) {
+      stoptimesWithoutPatterns(numberOfDepartures: 5, omitNonPickups: true) {
         scheduledDeparture
         realtimeDeparture
         realtime
