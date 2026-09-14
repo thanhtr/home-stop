@@ -39,7 +39,7 @@ const WEATHER_DESCRIPTIONS = {
 // Cached across warm serverless invocations so we don't re-geocode every request.
 let cachedCoords = null;
 
-async function resolveCoords(debug) {
+async function resolveCoords() {
   if (cachedCoords) {
     return cachedCoords;
   }
@@ -56,7 +56,7 @@ async function resolveCoords(debug) {
 
   if (!match) {
     const err = new Error(`No location found for "${LOCATION_NAME}"`);
-    if (debug) err.debugInfo = { results };
+    err.debugInfo = { results };
     throw err;
   }
 
@@ -65,7 +65,7 @@ async function resolveCoords(debug) {
     longitude: match.longitude,
     name: match.name,
     admin1: match.admin1,
-    debugInfo: debug ? { results } : undefined,
+    debugInfo: { results },
   };
   return cachedCoords;
 }
@@ -74,7 +74,7 @@ module.exports = async function handler(req, res) {
   const debug = req.query.debug === "1";
 
   try {
-    const coords = await resolveCoords(debug);
+    const coords = await resolveCoords();
 
     const url =
       `${FORECAST_URL}?latitude=${coords.latitude}&longitude=${coords.longitude}` +
