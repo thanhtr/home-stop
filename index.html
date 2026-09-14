@@ -15,9 +15,8 @@
   }
   .wrap { max-width: 720px; margin: 0 auto; }
 
-  .header { overflow: hidden; margin-bottom: 18px; }
+  .header { margin-bottom: 18px; }
   .header h1 {
-    float: left;
     font-size: 20px;
     margin: 0;
     line-height: 1.3;
@@ -28,23 +27,11 @@
     font-size: 13px;
     color: #6b7280;
   }
-  .header-actions { float: right; }
-  .icon-btn {
-    background: #ffffff;
-    border: 1px solid #e3e5e8;
-    color: #1a1c20;
-    border-radius: 10px;
-    width: 40px;
-    height: 40px;
-    font-size: 17px;
-    margin-left: 8px;
-  }
 
   .status-line {
     font-size: 12px;
     color: #6b7280;
     margin-bottom: 16px;
-    clear: both;
   }
 
   .stop-card {
@@ -120,145 +107,31 @@
     color: #c62828;
     margin-bottom: 16px;
   }
-
-  .settings-box {
-    background: #ffffff;
-    border: 1px solid #e3e5e8;
-    border-radius: 14px;
-    padding: 16px;
-    margin-top: 24px;
-  }
-  .settings-box h3 { margin: 0 0 14px; font-size: 14px; }
-  .field { margin-bottom: 14px; }
-  .field label {
-    display: block;
-    font-size: 12px;
-    color: #6b7280;
-    margin-bottom: 5px;
-  }
-  .field input {
-    width: 100%;
-    padding: 9px 10px;
-    border-radius: 8px;
-    border: 1px solid #e3e5e8;
-    background: #f5f6f8;
-    color: #1a1c20;
-    font-size: 14px;
-  }
-  .field .hint {
-    font-size: 11px;
-    color: #6b7280;
-    margin-top: 4px;
-  }
-  .btn {
-    padding: 9px 16px;
-    border-radius: 8px;
-    border: 1px solid #e3e5e8;
-    background: #f5f6f8;
-    color: #1a1c20;
-    font-size: 14px;
-  }
-  .btn.primary {
-    background: #007ac9;
-    border-color: #007ac9;
-    color: #ffffff;
-    font-weight: bold;
-  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="header">
     <h1>Vaaralan Talkootie<span>Next HSL departures</span></h1>
-    <div class="header-actions">
-      <button class="icon-btn" id="refreshBtn" title="Refresh now">&#8635;</button>
-    </div>
   </div>
 
   <div class="status-line" id="statusLine">Loading&#8230;</div>
   <div id="stops"></div>
-
-  <div class="settings-box">
-    <h3>Settings</h3>
-    <form id="settingsForm">
-      <div class="field">
-        <label for="stopId1">Stop 1 (code or gtfsId)</label>
-        <input id="stopId1" type="text" placeholder="V9305">
-      </div>
-      <div class="field">
-        <label for="stopId2">Stop 2 (code or gtfsId)</label>
-        <input id="stopId2" type="text" placeholder="V9306">
-        <div class="hint">A public HSL stop code (e.g. V9305) works directly, or use a full gtfsId (e.g. HSL:1174509).</div>
-      </div>
-      <div class="field">
-        <label for="intervalInput">Refresh interval (seconds)</label>
-        <input id="intervalInput" type="text" placeholder="30">
-      </div>
-      <button class="btn primary" type="submit">Save</button>
-    </form>
-  </div>
 </div>
 
 <script>
 (function () {
-  var STORAGE_KEY = "hsl-home-stop-settings";
-  var DEFAULT_INTERVAL = 30;
-  var DEFAULT_STOP1 = "V9305";
-  var DEFAULT_STOP2 = "V9306";
+  var STOP_IDS = ["V9305", "V9306"];
+  var REFRESH_SECONDS = 30;
 
   function byId(id) { return document.getElementById(id); }
   var stopsEl = byId("stops");
   var statusLine = byId("statusLine");
 
-  var timer = null;
-
-  function trim(s) { return (s || "").replace(/^\s+|\s+$/g, ""); }
-
-  function loadSettings() {
-    var stored = null;
-    try {
-      stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    } catch (e) {
-      stored = null;
-    }
-    if (stored && stored.stopId1) {
-      return stored;
-    }
-    return { stopId1: DEFAULT_STOP1, stopId2: DEFAULT_STOP2, interval: DEFAULT_INTERVAL };
-  }
-
-  function saveSettings(settings) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  }
-
-  function applySettingsToForm() {
-    var s = loadSettings();
-    byId("stopId1").value = s.stopId1 || "";
-    byId("stopId2").value = s.stopId2 || "";
-    byId("intervalInput").value = s.interval || DEFAULT_INTERVAL;
-  }
-
   function setText(el, text) {
     el.innerHTML = "";
     el.appendChild(document.createTextNode(text));
   }
-
-  byId("settingsForm").onsubmit = function () {
-    var interval = parseInt(byId("intervalInput").value, 10);
-    if (!interval || interval < 10) interval = DEFAULT_INTERVAL;
-    saveSettings({
-      stopId1: trim(byId("stopId1").value),
-      stopId2: trim(byId("stopId2").value),
-      interval: interval
-    });
-    scheduleRefresh();
-    loadAndRender();
-    return false;
-  };
-
-  byId("refreshBtn").onclick = function () {
-    loadAndRender();
-  };
 
   function fetchStop(gtfsId, callback) {
     var xhr = new XMLHttpRequest();
@@ -375,26 +248,10 @@
   }
 
   function loadAndRender() {
-    var settings = loadSettings();
-
-    if (!settings.stopId1) {
-      stopsEl.innerHTML = "";
-      var placeholder = document.createElement("div");
-      placeholder.className = "placeholder";
-      placeholder.appendChild(document.createTextNode("Add your stop codes below to get started."));
-      stopsEl.appendChild(placeholder);
-      setText(statusLine, "Not configured");
-      return;
-    }
-
-    var ids = [];
-    if (settings.stopId1) ids.push(settings.stopId1);
-    if (settings.stopId2) ids.push(settings.stopId2);
-
     setText(statusLine, "Refreshing...");
 
-    var results = new Array(ids.length);
-    var remaining = ids.length;
+    var results = new Array(STOP_IDS.length);
+    var remaining = STOP_IDS.length;
 
     function finish() {
       remaining -= 1;
@@ -409,7 +266,7 @@
           hadError = true;
           var err = document.createElement("div");
           err.className = "error-box";
-          err.appendChild(document.createTextNode('Stop "' + ids[i] + '": ' + r.error.message));
+          err.appendChild(document.createTextNode('Stop "' + STOP_IDS[i] + '": ' + r.error.message));
           stopsEl.appendChild(err);
           continue;
         }
@@ -417,7 +274,7 @@
           hadError = true;
           var err2 = document.createElement("div");
           err2.className = "error-box";
-          err2.appendChild(document.createTextNode('Stop "' + ids[i] + '" not found. Check the code in settings.'));
+          err2.appendChild(document.createTextNode('Stop "' + STOP_IDS[i] + '" not found.'));
           stopsEl.appendChild(err2);
           continue;
         }
@@ -436,23 +293,13 @@
       };
     };
 
-    for (var i = 0; i < ids.length; i++) {
-      fetchStop(ids[i], makeCallback(i));
+    for (var i = 0; i < STOP_IDS.length; i++) {
+      fetchStop(STOP_IDS[i], makeCallback(i));
     }
   }
 
-  function scheduleRefresh() {
-    if (timer) {
-      clearInterval(timer);
-    }
-    var settings = loadSettings();
-    var seconds = settings.interval || DEFAULT_INTERVAL;
-    timer = setInterval(loadAndRender, seconds * 1000);
-  }
-
-  applySettingsToForm();
   loadAndRender();
-  scheduleRefresh();
+  setInterval(loadAndRender, REFRESH_SECONDS * 1000);
 })();
 </script>
 </body>
