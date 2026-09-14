@@ -12,8 +12,12 @@ stop (V9305) side by side with current weather. Meant to be left running on an o
   in the `stop` query parameter — a bare code is resolved to a `gtfsId` via the Digitransit geocoding API first. Add `&debug=1` to see
   the raw geocoding response and resolved gtfsId while diagnosing lookup issues. Returns up to 5 upcoming departures.
 - `api/weather.js` is a Vercel serverless function that proxies Open-Meteo (free, no API key required) for current conditions near
-  Vaarala, Vantaa. It geocodes the location name once (cached across warm invocations) and fetches temperature, feels-like,
-  description, wind, and humidity. Add `?debug=1` to see the resolved coordinates and raw geocoding results.
+  Vaarala, Vantaa, plus the next few hours' forecast (`HOURLY_COUNT` in the script, default 4). It geocodes the location name once
+  (cached across warm invocations) and fetches temperature, feels-like, description, wind, and humidity. Add `?debug=1` to see the
+  resolved coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa,
+  not one of the several other Finnish villages with the same name.
+- The weather column is intentionally wider than the departures column (60%/36%) with a large current-temperature number, since
+  that's the point of a kiosk display — legible from across a room, not a compact widget.
 
 To change the stop shown or either refresh interval, edit the constants at the top of the `<script>` in `index.html` and redeploy —
 there is intentionally no runtime configuration UI.
@@ -41,3 +45,18 @@ on Vercel's Node runtime, not on the device, so they're free to use modern JS.
    workflow pass it through). No key is needed for weather — Open-Meteo is free and unauthenticated.
 2. Deploy this repo to Vercel (import the existing GitHub repo, don't let it clone into a new one).
 3. Open the deployed page — it shows departures for `V9305` and current weather immediately, no configuration needed.
+
+## Turning the device into a kiosk
+
+1. On the device, add the page to the Home Screen from Safari's Share sheet (rather than just bookmarking it) — combined with
+   the `apple-mobile-web-app-capable` meta tag in `index.html`, launching it from that Home Screen icon opens it full-screen
+   without Safari's address bar or toolbar.
+2. Turn on Guided Access: **Settings → General → Accessibility → Guided Access**, toggle it on, and set a Guided Access passcode
+   under **Passcode Settings** if you haven't already (this can be different from the device's own lock passcode).
+3. Open the page (ideally via the Home Screen icon from step 1), then **triple-click the Home button** to start a Guided Access
+   session. You can circle any area of the screen first to disable touch there (not really needed here since the page has no
+   interactive elements), then tap **Start**.
+4. To turn Guided Access **off** (e.g. to update the device): triple-click the Home button again, enter the Guided Access
+   passcode, then tap **End** in the top-left.
+5. Also set **Settings → Display & Brightness → Auto-Lock → Never** (on very old iOS this may be under **Settings → General →
+   Auto-Lock**) so the screen doesn't sleep — Guided Access alone doesn't prevent Auto-Lock from turning the display off.

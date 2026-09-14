@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Vaaralan Talkootie">
 <title>Vaaralan Talkootie — HSL Stops</title>
 <style>
   * { -webkit-box-sizing: border-box; box-sizing: border-box; }
@@ -16,14 +19,11 @@
   .wrap { width: 100%; }
 
   .stops-row { overflow: hidden; }
-  .stop-col {
-    width: 48%;
-  }
-  .stop-col.col-first { float: left; }
-  .stop-col.col-last { float: right; }
+  .stop-col { float: left; width: 36%; }
+  .weather-col { float: right; width: 60%; }
 
   @media (max-width: 480px) {
-    .stop-col { width: 100%; float: none; }
+    .stop-col, .weather-col { width: 100%; float: none; }
   }
 
   .header { margin-bottom: 18px; }
@@ -120,25 +120,46 @@
   }
 
   .weather-temp {
-    font-size: 56px;
+    font-size: 88px;
     font-weight: bold;
     line-height: 1;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .weather-desc {
-    font-size: 20px;
+    font-size: 28px;
+    font-weight: bold;
     color: #333333;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
   }
   .weather-meta {
-    font-size: 15px;
+    font-size: 17px;
     color: #6b7280;
-    line-height: 1.6;
+    line-height: 1.7;
+    margin-bottom: 8px;
   }
+  .weather-hourly-heading {
+    font-size: 14px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 16px;
+    margin-bottom: 4px;
+  }
+  table.weather-hourly { width: 100%; border-collapse: collapse; }
+  table.weather-hourly td {
+    padding: 10px 0;
+    border-top: 1px solid #e3e5e8;
+    font-size: 18px;
+    vertical-align: middle;
+  }
+  table.weather-hourly tr:first-child td { border-top: none; }
+  .weather-hour-time { width: 70px; color: #6b7280; }
+  .weather-hour-desc { padding-left: 10px; padding-right: 10px; }
+  .weather-hour-temp { text-align: right; font-weight: bold; width: 60px; }
   .weather-updated {
     font-size: 12px;
     color: #6b7280;
-    margin-top: 14px;
+    margin-top: 16px;
   }
 </style>
 </head>
@@ -150,8 +171,8 @@
 
   <div class="status-line" id="statusLine">Loading&#8230;</div>
   <div class="stops-row">
-    <div class="stop-col col-first" id="stopCol0"></div>
-    <div class="stop-col col-last" id="weatherCol"></div>
+    <div class="stop-col" id="stopCol0"></div>
+    <div class="weather-col" id="weatherCol"></div>
   </div>
 </div>
 
@@ -238,6 +259,13 @@
   function currentTimeStr() {
     var now = new Date();
     return pad2(now.getHours()) + ":" + pad2(now.getMinutes()) + ":" + pad2(now.getSeconds());
+  }
+
+  function formatHour(isoLocalString) {
+    // Open-Meteo returns local times like "2026-09-14T22:00" (already in the
+    // requested timezone) -- just take the HH:MM part, no Date parsing needed.
+    var parts = (isoLocalString || "").split("T");
+    return parts.length > 1 ? parts[1] : (isoLocalString || "");
   }
 
   function renderStopCard(stop) {
@@ -354,6 +382,41 @@
       meta.appendChild(document.createTextNode(metaLines[i]));
     }
     card.appendChild(meta);
+
+    var hourly = weather.hourly || [];
+    if (hourly.length) {
+      var heading = document.createElement("div");
+      heading.className = "weather-hourly-heading";
+      heading.appendChild(document.createTextNode("Later today"));
+      card.appendChild(heading);
+
+      var hourlyTable = document.createElement("table");
+      hourlyTable.className = "weather-hourly";
+
+      for (var h = 0; h < hourly.length; h++) {
+        var hour = hourly[h];
+        var hourTr = document.createElement("tr");
+
+        var timeTd = document.createElement("td");
+        timeTd.className = "weather-hour-time";
+        timeTd.appendChild(document.createTextNode(formatHour(hour.time)));
+        hourTr.appendChild(timeTd);
+
+        var hourDescTd = document.createElement("td");
+        hourDescTd.className = "weather-hour-desc";
+        hourDescTd.appendChild(document.createTextNode(hour.description || "Unknown"));
+        hourTr.appendChild(hourDescTd);
+
+        var hourTempTd = document.createElement("td");
+        hourTempTd.className = "weather-hour-temp";
+        var hourTempValue = typeof hour.temperature === "number" ? Math.round(hour.temperature) + "°" : "--";
+        hourTempTd.appendChild(document.createTextNode(hourTempValue));
+        hourTr.appendChild(hourTempTd);
+
+        hourlyTable.appendChild(hourTr);
+      }
+      card.appendChild(hourlyTable);
+    }
 
     var updated = document.createElement("div");
     updated.className = "weather-updated";

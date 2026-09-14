@@ -2,6 +2,7 @@ const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const LOCATION_NAME = "Vaarala";
 const COUNTRY_CODE = "FI";
+const HOURLY_COUNT = 4;
 
 // Open-Meteo's WMO weather_code -> short text description.
 // https://open-meteo.com/en/docs (weather_code)
@@ -79,6 +80,8 @@ module.exports = async function handler(req, res) {
     const url =
       `${FORECAST_URL}?latitude=${coords.latitude}&longitude=${coords.longitude}` +
       "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m" +
+      "&hourly=temperature_2m,weather_code" +
+      "&forecast_days=2" +
       "&timezone=Europe%2FHelsinki";
     const upstream = await fetch(url);
     const data = await upstream.json();
@@ -89,6 +92,23 @@ module.exports = async function handler(req, res) {
     }
 
     const current = data.current || {};
+    const hourlyRaw = data.hourly || {};
+    const hourlyTimes = hourlyRaw.time || [];
+    const hourlyTemps = hourlyRaw.temperature_2m || [];
+    const hourlyCodes = hourlyRaw.weather_code || [];
+
+    const hourly = [];
+    for (let i = 0; i < hourlyTimes.length && hourly.length < HOURLY_COUNT; i++) {
+      // Skip hours at or before the current one so this only shows what's ahead today.
+      if (hourlyTimes[i] <= current.time) continue;
+      hourly.push({
+        time: hourlyTimes[i],
+        temperature: hourlyTemps[i],
+        weatherCode: hourlyCodes[i],
+        description: WEATHER_DESCRIPTIONS[hourlyCodes[i]] || "Unknown",
+      });
+    }
+
     const payload = {
       location: coords.name,
       current: {
@@ -100,6 +120,7 @@ module.exports = async function handler(req, res) {
         humidity: current.relative_humidity_2m,
         time: current.time,
       },
+      hourly: hourly,
     };
 
     if (debug) {
