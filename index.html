@@ -408,24 +408,34 @@
     const ids = [settings.stopId1, settings.stopId2].filter(Boolean);
     statusLine.textContent = "Refreshing…";
 
-    try {
-      const stops = await Promise.all(ids.map((id) => fetchStop(id)));
-      stopsEl.innerHTML = "";
-      stops.forEach((stop, i) => {
-        if (!stop) {
-          const err = document.createElement("div");
-          err.className = "error-box";
-          err.textContent = `Stop "${ids[i]}" not found. Check the GTFS ID in settings.`;
-          stopsEl.appendChild(err);
-          return;
-        }
-        stopsEl.appendChild(renderStopCard(stop));
-      });
-      statusLine.textContent = "Updated " + new Date().toLocaleTimeString();
-    } catch (err) {
-      errorBox.innerHTML = `<div class="error-box">Failed to load departures: ${err.message}</div>`;
-      statusLine.textContent = "Update failed";
-    }
+    const results = await Promise.allSettled(ids.map((id) => fetchStop(id)));
+    stopsEl.innerHTML = "";
+    let hadError = false;
+
+    results.forEach((result, i) => {
+      if (result.status === "rejected") {
+        hadError = true;
+        const err = document.createElement("div");
+        err.className = "error-box";
+        err.textContent = `Stop "${ids[i]}": ${result.reason.message}`;
+        stopsEl.appendChild(err);
+        return;
+      }
+      const stop = result.value;
+      if (!stop) {
+        hadError = true;
+        const err = document.createElement("div");
+        err.className = "error-box";
+        err.textContent = `Stop "${ids[i]}" not found. Check the code or GTFS ID in settings.`;
+        stopsEl.appendChild(err);
+        return;
+      }
+      stopsEl.appendChild(renderStopCard(stop));
+    });
+
+    statusLine.textContent = hadError
+      ? "Updated with errors " + new Date().toLocaleTimeString()
+      : "Updated " + new Date().toLocaleTimeString();
   }
 
   function scheduleRefresh() {
