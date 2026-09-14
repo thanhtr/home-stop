@@ -1,12 +1,15 @@
 const GRAPHQL_URL = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
 const GEOCODING_URL = "https://api.digitransit.fi/geocoding/v1/search";
 
-// Digitransit geocoding "gid" looks like "gtfshsl:stop:1174509" — this maps
-// its source prefix to the feed id used by the routing API's gtfsId ("HSL:1174509").
-const SOURCE_TO_FEED = {
-  gtfshsl: "HSL",
-  gtfshsltest: "HSL",
-};
+// Digitransit geocoding's properties.id looks like "GTFS:HSL:4930205#V9305" —
+// strip the leading "GTFS:" and the trailing "#<code>" to get the routing
+// API's gtfsId ("HSL:4930205").
+function extractGtfsId(id) {
+  const withoutSuffix = id.split("#")[0];
+  const firstColon = withoutSuffix.indexOf(":");
+  if (firstColon < 0) return null;
+  return withoutSuffix.slice(firstColon + 1);
+}
 
 const QUERY = `
   query StopTimes($id: String!) {
@@ -45,11 +48,15 @@ async function resolveGtfsId(codeOrId, apiKey, debug) {
   }
   const json = await res.json();
   const rawFeatures = json.features || [];
-  const features = rawFeatures.filter((f) => f.properties && f.properties.gid);
+  const features = rawFeatures.filter((f) => f.properties && f.properties.id);
 
   const match =
-    features.find((f) => (f.properties.code || "").toUpperCase() === codeOrId.toUpperCase()) ||
-    features[0];
+    features.find(
+      (f) =>
+        f.properties.addendum &&
+        f.properties.addendum.GTFS &&
+        (f.properties.addendum.GTFS.code || "").toUpperCase() === codeOrId.toUpperCase()
+    ) || features[0];
 
   const debugInfo = debug
     ? {
@@ -64,14 +71,13 @@ async function resolveGtfsId(codeOrId, apiKey, debug) {
     throw err;
   }
 
-  const [source, , rawId] = match.properties.gid.split(":");
-  const feed = SOURCE_TO_FEED[source];
-  if (!feed || !rawId) {
-    const err = new Error(`Could not resolve gtfsId for code "${codeOrId}" (gid: ${match.properties.gid})`);
+  const gtfsId = extractGtfsId(match.properties.id);
+  if (!gtfsId) {
+    const err = new Error(`Could not resolve gtfsId for code "${codeOrId}" (id: ${match.properties.id})`);
     err.debugInfo = debugInfo;
     throw err;
   }
-  return { gtfsId: `${feed}:${rawId}`, debugInfo };
+  return { gtfsId, debugInfo };
 }
 
 module.exports = async function handler(req, res) {
