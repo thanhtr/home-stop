@@ -26,23 +26,10 @@
     .stop-col, .weather-col { width: 100%; float: none; }
   }
 
-  .header { margin-bottom: 18px; }
-  .header h1 {
-    font-size: 20px;
-    margin: 0;
-    line-height: 1.3;
-  }
-  .header h1 span {
-    display: block;
-    font-weight: normal;
-    font-size: 13px;
-    color: #6b7280;
-  }
-
   .status-line {
     font-size: 12px;
     color: #6b7280;
-    margin-bottom: 16px;
+    margin-top: 12px;
   }
 
   .stop-card {
@@ -119,60 +106,55 @@
     margin-bottom: 16px;
   }
 
+  table.weather-main { width: 100%; border-collapse: collapse; }
+  table.weather-main td { padding: 0; vertical-align: middle; }
+  .weather-side { padding-left: 20px; text-align: left; }
+
+  .weather-icon { display: inline-block; vertical-align: middle; margin-right: 6px; }
   .weather-temp {
-    font-size: 88px;
+    display: inline-block;
+    vertical-align: middle;
+    font-size: 76px;
     font-weight: bold;
     line-height: 1;
-    margin-bottom: 8px;
   }
   .weather-desc {
-    font-size: 28px;
+    font-size: 22px;
     font-weight: bold;
     color: #333333;
-    margin-bottom: 16px;
+    margin-top: 8px;
   }
   .weather-meta {
     font-size: 17px;
     color: #6b7280;
-    line-height: 1.7;
-    margin-bottom: 8px;
+    line-height: 1.9;
   }
+
   .weather-hourly-heading {
-    font-size: 14px;
+    font-size: 13px;
     color: #6b7280;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    margin-top: 16px;
-    margin-bottom: 4px;
+    margin-top: 20px;
+    margin-bottom: 6px;
   }
-  table.weather-hourly { width: 100%; border-collapse: collapse; }
-  table.weather-hourly td {
-    padding: 10px 0;
-    border-top: 1px solid #e3e5e8;
-    font-size: 18px;
-    vertical-align: middle;
+  .hour-chip {
+    display: inline-block;
+    width: 16%;
+    min-width: 54px;
+    text-align: center;
+    vertical-align: top;
+    padding: 6px 2px;
   }
-  table.weather-hourly tr:first-child td { border-top: none; }
-  .weather-hour-time { width: 70px; color: #6b7280; }
-  .weather-hour-desc { padding-left: 10px; padding-right: 10px; }
-  .weather-hour-temp { text-align: right; font-weight: bold; width: 60px; }
-  .weather-updated {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 16px;
-  }
+  .hour-chip-time { font-size: 13px; color: #6b7280; }
+  .hour-chip-temp { font-size: 16px; font-weight: bold; margin-top: 2px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="header">
-    <h1>Vaaralan Talkootie<span>Next HSL departures</span></h1>
-  </div>
-
-  <div class="status-line" id="statusLine">Loading&#8230;</div>
   <div class="stops-row">
-    <div class="stop-col" id="stopCol0"></div>
-    <div class="weather-col" id="weatherCol"></div>
+    <div class="stop-col" id="stopCol0"><div class="placeholder">Loading&#8230;</div></div>
+    <div class="weather-col" id="weatherCol"><div class="placeholder">Loading&#8230;</div></div>
   </div>
 </div>
 
@@ -185,12 +167,6 @@
   function byId(id) { return document.getElementById(id); }
   var stopCols = [byId("stopCol0")];
   var weatherCol = byId("weatherCol");
-  var statusLine = byId("statusLine");
-
-  function setText(el, text) {
-    el.innerHTML = "";
-    el.appendChild(document.createTextNode(text));
-  }
 
   function getJson(url, callback) {
     var xhr = new XMLHttpRequest();
@@ -268,6 +244,104 @@
     return parts.length > 1 ? parts[1] : (isoLocalString || "");
   }
 
+  // Inline SVG weather icons, built from plain shapes (no emoji/font glyphs --
+  // several weather emoji were added to Unicode/fonts after old iOS shipped
+  // and would render as blank boxes there, but SVG has always worked).
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var CLOUD_COLOR = "#9aa5b1";
+  var SUN_COLOR = "#f4a623";
+  var RAIN_COLOR = "#3b8fd1";
+  var SNOW_COLOR = "#8fbce6";
+
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS(SVG_NS, tag);
+    for (var key in attrs) {
+      if (Object.prototype.hasOwnProperty.call(attrs, key)) {
+        el.setAttribute(key, attrs[key]);
+      }
+    }
+    return el;
+  }
+
+  function addCloud(svg, cx, cy, scale, color) {
+    svg.appendChild(svgEl("circle", { cx: cx - 8 * scale, cy: cy + 2 * scale, r: 7 * scale, fill: color }));
+    svg.appendChild(svgEl("circle", { cx: cx, cy: cy - 4 * scale, r: 9 * scale, fill: color }));
+    svg.appendChild(svgEl("circle", { cx: cx + 9 * scale, cy: cy + 2 * scale, r: 7 * scale, fill: color }));
+    svg.appendChild(svgEl("rect", {
+      x: cx - 14 * scale, y: cy, width: 28 * scale, height: 10 * scale, rx: 5 * scale, fill: color
+    }));
+  }
+
+  function addSun(svg, cx, cy, r, color) {
+    svg.appendChild(svgEl("circle", { cx: cx, cy: cy, r: r, fill: color }));
+    var rayLen = r * 0.6;
+    var rayGap = r * 0.35;
+    var angles = [0, 45, 90, 135, 180, 225, 270, 315];
+    for (var i = 0; i < angles.length; i++) {
+      var rad = (angles[i] * Math.PI) / 180;
+      var x1 = cx + Math.cos(rad) * (r + rayGap);
+      var y1 = cy + Math.sin(rad) * (r + rayGap);
+      var x2 = cx + Math.cos(rad) * (r + rayGap + rayLen);
+      var y2 = cy + Math.sin(rad) * (r + rayGap + rayLen);
+      svg.appendChild(svgEl("line", {
+        x1: x1, y1: y1, x2: x2, y2: y2,
+        stroke: color, "stroke-width": r * 0.22, "stroke-linecap": "round"
+      }));
+    }
+  }
+
+  function addRainDrops(svg, cx, cy, color) {
+    var xs = [cx - 8, cx, cx + 8];
+    for (var i = 0; i < xs.length; i++) {
+      svg.appendChild(svgEl("line", {
+        x1: xs[i], y1: cy, x2: xs[i] - 2, y2: cy + 8,
+        stroke: color, "stroke-width": 2.6, "stroke-linecap": "round"
+      }));
+    }
+  }
+
+  function addSnowDots(svg, cx, cy, color) {
+    var xs = [cx - 8, cx, cx + 8];
+    for (var i = 0; i < xs.length; i++) {
+      svg.appendChild(svgEl("circle", { cx: xs[i], cy: cy + 5, r: 2, fill: color }));
+    }
+  }
+
+  function addBolt(svg, cx, cy, color) {
+    var points =
+      (cx + 2) + "," + cy + " " +
+      (cx - 4) + "," + (cy + 10) + " " +
+      cx + "," + (cy + 10) + " " +
+      (cx - 2) + "," + (cy + 20) + " " +
+      (cx + 6) + "," + (cy + 8) + " " +
+      cx + "," + (cy + 8);
+    svg.appendChild(svgEl("polygon", { points: points, fill: color }));
+  }
+
+  function weatherIcon(category, size) {
+    var svg = svgEl("svg", { viewBox: "0 0 48 48", width: size, height: size, "class": "weather-icon" });
+
+    if (category === "clear") {
+      addSun(svg, 24, 24, 11, SUN_COLOR);
+    } else if (category === "partly") {
+      addSun(svg, 17, 17, 8, SUN_COLOR);
+      addCloud(svg, 27, 27, 0.85, CLOUD_COLOR);
+    } else if (category === "rain") {
+      addCloud(svg, 24, 20, 1, CLOUD_COLOR);
+      addRainDrops(svg, 24, 32, RAIN_COLOR);
+    } else if (category === "snow") {
+      addCloud(svg, 24, 20, 1, CLOUD_COLOR);
+      addSnowDots(svg, 24, 32, SNOW_COLOR);
+    } else if (category === "thunder") {
+      addCloud(svg, 24, 18, 1, CLOUD_COLOR);
+      addBolt(svg, 22, 26, SUN_COLOR);
+    } else {
+      addCloud(svg, 24, 22, 1.05, CLOUD_COLOR);
+    }
+
+    return svg;
+  }
+
   function renderStopCard(stop) {
     var card = document.createElement("div");
     card.className = "stop-card";
@@ -343,28 +417,33 @@
     card.className = "stop-card";
 
     var h2 = document.createElement("h2");
-    h2.appendChild(document.createTextNode("Weather"));
-    if (weather.location) {
-      var loc = document.createElement("span");
-      loc.className = "code";
-      loc.appendChild(document.createTextNode(weather.location));
-      h2.appendChild(loc);
-    }
+    h2.appendChild(document.createTextNode(weather.location || "Weather"));
     card.appendChild(h2);
 
     var current = weather.current || {};
 
-    var temp = document.createElement("div");
+    var mainTable = document.createElement("table");
+    mainTable.className = "weather-main";
+    var mainTr = document.createElement("tr");
+
+    var primaryTd = document.createElement("td");
+    primaryTd.appendChild(weatherIcon(current.category, 64));
+
+    var temp = document.createElement("span");
     temp.className = "weather-temp";
     var tempValue = typeof current.temperature === "number" ? Math.round(current.temperature) + "°C" : "--";
     temp.appendChild(document.createTextNode(tempValue));
-    card.appendChild(temp);
+    primaryTd.appendChild(temp);
 
     var desc = document.createElement("div");
     desc.className = "weather-desc";
     desc.appendChild(document.createTextNode(current.description || "Unknown"));
-    card.appendChild(desc);
+    primaryTd.appendChild(desc);
 
+    mainTr.appendChild(primaryTd);
+
+    var sideTd = document.createElement("td");
+    sideTd.className = "weather-side";
     var meta = document.createElement("div");
     meta.className = "weather-meta";
     var metaLines = [];
@@ -381,54 +460,45 @@
       if (i > 0) meta.appendChild(document.createElement("br"));
       meta.appendChild(document.createTextNode(metaLines[i]));
     }
-    card.appendChild(meta);
+    sideTd.appendChild(meta);
+    mainTr.appendChild(sideTd);
+
+    mainTable.appendChild(mainTr);
+    card.appendChild(mainTable);
 
     var hourly = weather.hourly || [];
     if (hourly.length) {
       var heading = document.createElement("div");
       heading.className = "weather-hourly-heading";
-      heading.appendChild(document.createTextNode("Later today"));
+      heading.appendChild(document.createTextNode("Rest of today"));
       card.appendChild(heading);
-
-      var hourlyTable = document.createElement("table");
-      hourlyTable.className = "weather-hourly";
 
       for (var h = 0; h < hourly.length; h++) {
         var hour = hourly[h];
-        var hourTr = document.createElement("tr");
+        var chip = document.createElement("div");
+        chip.className = "hour-chip";
 
-        var timeTd = document.createElement("td");
-        timeTd.className = "weather-hour-time";
-        timeTd.appendChild(document.createTextNode(formatHour(hour.time)));
-        hourTr.appendChild(timeTd);
+        var chipTime = document.createElement("div");
+        chipTime.className = "hour-chip-time";
+        chipTime.appendChild(document.createTextNode(formatHour(hour.time)));
+        chip.appendChild(chipTime);
 
-        var hourDescTd = document.createElement("td");
-        hourDescTd.className = "weather-hour-desc";
-        hourDescTd.appendChild(document.createTextNode(hour.description || "Unknown"));
-        hourTr.appendChild(hourDescTd);
+        chip.appendChild(weatherIcon(hour.category, 24));
 
-        var hourTempTd = document.createElement("td");
-        hourTempTd.className = "weather-hour-temp";
-        var hourTempValue = typeof hour.temperature === "number" ? Math.round(hour.temperature) + "°" : "--";
-        hourTempTd.appendChild(document.createTextNode(hourTempValue));
-        hourTr.appendChild(hourTempTd);
+        var chipTemp = document.createElement("div");
+        chipTemp.className = "hour-chip-temp";
+        var chipTempValue = typeof hour.temperature === "number" ? Math.round(hour.temperature) + "°" : "--";
+        chipTemp.appendChild(document.createTextNode(chipTempValue));
+        chip.appendChild(chipTemp);
 
-        hourlyTable.appendChild(hourTr);
+        card.appendChild(chip);
       }
-      card.appendChild(hourlyTable);
     }
-
-    var updated = document.createElement("div");
-    updated.className = "weather-updated";
-    updated.appendChild(document.createTextNode("Updated " + currentTimeStr()));
-    card.appendChild(updated);
 
     return card;
   }
 
   function loadDepartures() {
-    setText(statusLine, "Refreshing...");
-
     var results = new Array(STOP_IDS.length);
     var remaining = STOP_IDS.length;
 
@@ -437,6 +507,7 @@
       if (remaining > 0) return;
 
       var hadError = false;
+      var lastCol = stopCols[stopCols.length - 1];
 
       for (var i = 0; i < results.length; i++) {
         var col = stopCols[i];
@@ -461,7 +532,10 @@
         col.appendChild(renderStopCard(r.stop));
       }
 
-      setText(statusLine, (hadError ? "Updated with errors " : "Updated ") + currentTimeStr());
+      var status = document.createElement("div");
+      status.className = "status-line";
+      status.appendChild(document.createTextNode((hadError ? "Updated with errors " : "Updated ") + currentTimeStr()));
+      lastCol.appendChild(status);
     }
 
     var makeCallback = function (index) {

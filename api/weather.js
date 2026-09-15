@@ -2,7 +2,27 @@ const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const LOCATION_NAME = "Vaarala";
 const COUNTRY_CODE = "FI";
-const HOURLY_COUNT = 4;
+
+// Groups of Open-Meteo's WMO weather_code -> a small icon category the
+// client draws as inline SVG (no emoji/font glyphs, so it's safe on very
+// old iOS Safari, which may lack later-added weather emoji).
+const ICON_CATEGORIES = {
+  clear: [0, 1],
+  partly: [2],
+  cloudy: [3, 45, 48],
+  rain: [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82],
+  snow: [71, 73, 75, 77, 85, 86],
+  thunder: [95, 96, 99],
+};
+
+function iconCategory(code) {
+  for (const category in ICON_CATEGORIES) {
+    if (ICON_CATEGORIES[category].indexOf(code) !== -1) {
+      return category;
+    }
+  }
+  return "cloudy";
+}
 
 // Open-Meteo's WMO weather_code -> short text description.
 // https://open-meteo.com/en/docs (weather_code)
@@ -81,7 +101,7 @@ module.exports = async function handler(req, res) {
       `${FORECAST_URL}?latitude=${coords.latitude}&longitude=${coords.longitude}` +
       "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m" +
       "&hourly=temperature_2m,weather_code" +
-      "&forecast_days=2" +
+      "&forecast_days=1" +
       "&timezone=Europe%2FHelsinki";
     const upstream = await fetch(url);
     const data = await upstream.json();
@@ -97,15 +117,18 @@ module.exports = async function handler(req, res) {
     const hourlyTemps = hourlyRaw.temperature_2m || [];
     const hourlyCodes = hourlyRaw.weather_code || [];
 
+    // Only the remaining hours of today -- forecast_days=1 already stops at
+    // day's end, and skipping anything at or before "now" leaves just what's
+    // still ahead, so the pane fills with exactly as much as is left today.
     const hourly = [];
-    for (let i = 0; i < hourlyTimes.length && hourly.length < HOURLY_COUNT; i++) {
-      // Skip hours at or before the current one so this only shows what's ahead today.
+    for (let i = 0; i < hourlyTimes.length; i++) {
       if (hourlyTimes[i] <= current.time) continue;
       hourly.push({
         time: hourlyTimes[i],
         temperature: hourlyTemps[i],
         weatherCode: hourlyCodes[i],
         description: WEATHER_DESCRIPTIONS[hourlyCodes[i]] || "Unknown",
+        category: iconCategory(hourlyCodes[i]),
       });
     }
 
@@ -116,6 +139,7 @@ module.exports = async function handler(req, res) {
         apparentTemperature: current.apparent_temperature,
         weatherCode: current.weather_code,
         description: WEATHER_DESCRIPTIONS[current.weather_code] || "Unknown",
+        category: iconCategory(current.weather_code),
         windSpeed: current.wind_speed_10m,
         humidity: current.relative_humidity_2m,
         time: current.time,

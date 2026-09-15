@@ -4,20 +4,25 @@ stop (V9305) side by side with current weather. Meant to be left running on an o
 
 ## How it works
 
-- `index.html` is the whole UI: no build step, deploy as-is on Vercel. It has no settings, buttons, or forms — the stop code
-  is hardcoded (`STOP_IDS` in the script). Departures refresh every 30 seconds; weather refreshes every hour (both intervals
-  are also hardcoded at the top of the script).
+- `index.html` is the whole UI: no build step, deploy as-is on Vercel. It has no settings, buttons, or forms, and no page title
+  or "Updated" text outside the panes — the stop code is hardcoded (`STOP_IDS` in the script), and the only status text ("Updated
+  HH:MM:SS") lives inside the departures pane itself. Departures refresh every 30 seconds; weather refreshes every hour (both
+  intervals are hardcoded at the top of the script).
 - `api/departures.js` is a Vercel serverless function that calls the Digitransit routing API using an `API_KEY` environment variable,
   so the key never reaches the browser. It accepts either a public HSL stop code (e.g. `V9305`) or a full `gtfsId` (e.g. `HSL:1174509`)
   in the `stop` query parameter — a bare code is resolved to a `gtfsId` via the Digitransit geocoding API first. Add `&debug=1` to see
   the raw geocoding response and resolved gtfsId while diagnosing lookup issues. Returns up to 5 upcoming departures.
 - `api/weather.js` is a Vercel serverless function that proxies Open-Meteo (free, no API key required) for current conditions near
-  Vaarala, Vantaa, plus the next few hours' forecast (`HOURLY_COUNT` in the script, default 4). It geocodes the location name once
-  (cached across warm invocations) and fetches temperature, feels-like, description, wind, and humidity. Add `?debug=1` to see the
-  resolved coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa,
-  not one of the several other Finnish villages with the same name.
-- The weather column is intentionally wider than the departures column (60%/36%) with a large current-temperature number, since
-  that's the point of a kiosk display — legible from across a room, not a compact widget.
+  Vaarala, Vantaa, plus every remaining hour of the current day (not a fixed count — it stops naturally at midnight since the
+  request only asks for `forecast_days=1`). It geocodes the location name once (cached across warm invocations) and fetches
+  temperature, feels-like, description, wind, humidity, and a small icon category per hour. Add `?debug=1` to see the resolved
+  coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa, not
+  one of the several other Finnish villages with the same name.
+- The weather column is intentionally wider than the departures column (60%/36%) with a large current-temperature number and icon,
+  since that's the point of a kiosk display — legible from across a room, not a compact widget. The weather pane shows just the
+  location name (no "Weather" label) with feels-like/wind/humidity to the right of the big temperature, and the remaining hours of
+  the day as a row of compact icon chips below — no separate "Updated" text in that pane.
+- Weather icons are hand-built inline SVG shapes (sun/cloud/rain/snow/thunder), not emoji — see Old-device compatibility below.
 
 To change the stop shown or either refresh interval, edit the constants at the top of the `<script>` in `index.html` and redeploy —
 there is intentionally no runtime configuration UI.
@@ -32,7 +37,9 @@ home as a display. That rules out a lot of modern web features, so the page deli
 - Flexbox (departure rows use a `<table>`; the two-column layout uses floats)
 - `fetch`, `Promise`, arrow functions, `const`/`let`, template literals, destructuring, spread (plain ES5 with `var`,
   `function`, and `XMLHttpRequest`)
-- Emoji/icon glyphs for weather (plain text descriptions instead, since old iOS fonts may not have later-added weather emoji)
+- Emoji glyphs for weather — icons are drawn as inline SVG shapes (`weatherIcon()` in the script) built from `<circle>`/`<rect>`/
+  `<line>`/`<polygon>` primitives instead, since several weather emoji were added to Unicode/fonts after old iOS shipped and would
+  render as blank boxes there, while SVG rendering has always worked
 
 Keep any future edits to `index.html` within this same ES5 + table/float-layout, no-interaction style. Both `api/*.js` files run
 on Vercel's Node runtime, not on the device, so they're free to use modern JS.
