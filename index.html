@@ -26,12 +26,6 @@
     .stop-col, .weather-col { width: 100%; float: none; }
   }
 
-  .status-line {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 12px;
-  }
-
   .stop-card {
     background: #ffffff;
     border: 1px solid #e3e5e8;
@@ -230,11 +224,6 @@
     if (diffMin <= 0) return { big: "Now", small: clock };
     if (diffMin < 60) return { big: diffMin + " min", small: clock };
     return { big: clock, small: "" };
-  }
-
-  function currentTimeStr() {
-    var now = new Date();
-    return pad2(now.getHours()) + ":" + pad2(now.getMinutes()) + ":" + pad2(now.getSeconds());
   }
 
   function formatHour(isoLocalString) {
@@ -506,15 +495,11 @@
       remaining -= 1;
       if (remaining > 0) return;
 
-      var hadError = false;
-      var lastCol = stopCols[stopCols.length - 1];
-
       for (var i = 0; i < results.length; i++) {
         var col = stopCols[i];
         col.innerHTML = "";
         var r = results[i];
         if (r.error) {
-          hadError = true;
           var err = document.createElement("div");
           err.className = "error-box";
           err.appendChild(document.createTextNode('Stop "' + STOP_IDS[i] + '": ' + r.error.message));
@@ -522,7 +507,6 @@
           continue;
         }
         if (!r.stop) {
-          hadError = true;
           var err2 = document.createElement("div");
           err2.className = "error-box";
           err2.appendChild(document.createTextNode('Stop "' + STOP_IDS[i] + '" not found.'));
@@ -531,11 +515,6 @@
         }
         col.appendChild(renderStopCard(r.stop));
       }
-
-      var status = document.createElement("div");
-      status.className = "status-line";
-      status.appendChild(document.createTextNode((hadError ? "Updated with errors " : "Updated ") + currentTimeStr()));
-      lastCol.appendChild(status);
     }
 
     var makeCallback = function (index) {
