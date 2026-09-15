@@ -2,6 +2,7 @@ const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const LOCATION_NAME = "Vaarala";
 const COUNTRY_CODE = "FI";
+const HOURLY_COUNT = 12;
 
 // Groups of Open-Meteo's WMO weather_code -> a small icon category the
 // client draws as inline SVG (no emoji/font glyphs, so it's safe on very
@@ -101,7 +102,7 @@ module.exports = async function handler(req, res) {
       `${FORECAST_URL}?latitude=${coords.latitude}&longitude=${coords.longitude}` +
       "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m" +
       "&hourly=temperature_2m,weather_code" +
-      "&forecast_days=1" +
+      "&forecast_days=2" +
       "&timezone=Europe%2FHelsinki";
     const upstream = await fetch(url);
     const data = await upstream.json();
@@ -117,11 +118,11 @@ module.exports = async function handler(req, res) {
     const hourlyTemps = hourlyRaw.temperature_2m || [];
     const hourlyCodes = hourlyRaw.weather_code || [];
 
-    // Only the remaining hours of today -- forecast_days=1 already stops at
-    // day's end, and skipping anything at or before "now" leaves just what's
-    // still ahead, so the pane fills with exactly as much as is left today.
+    // A rolling window of the next HOURLY_COUNT hours from now, not tied to
+    // the calendar day -- forecast_days=2 guarantees enough hours are always
+    // available even when "now" is late in the day.
     const hourly = [];
-    for (let i = 0; i < hourlyTimes.length; i++) {
+    for (let i = 0; i < hourlyTimes.length && hourly.length < HOURLY_COUNT; i++) {
       if (hourlyTimes[i] <= current.time) continue;
       hourly.push({
         time: hourlyTimes[i],
