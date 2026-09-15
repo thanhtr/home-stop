@@ -18,12 +18,13 @@
   }
   .wrap { width: 100%; }
 
-  .stops-row { overflow: hidden; }
-  .stop-col { float: left; width: 36%; }
-  .weather-col { float: right; width: 60%; }
+  .stops-row { display: table; width: 100%; table-layout: fixed; }
+  .stop-col { display: table-cell; width: 36%; vertical-align: top; padding-right: 16px; }
+  .weather-col { display: table-cell; width: 64%; vertical-align: top; }
 
   @media (max-width: 480px) {
-    .stop-col, .weather-col { width: 100%; float: none; }
+    .stops-row { display: block; }
+    .stop-col, .weather-col { display: block; width: 100%; padding-right: 0; }
   }
 
   .stop-card {
@@ -31,7 +32,7 @@
     border: 1px solid #e3e5e8;
     border-radius: 14px;
     padding: 20px;
-    margin-bottom: 16px;
+    height: 100%;
   }
   .stop-card h2 {
     font-size: 26px;
@@ -118,11 +119,13 @@
     color: #333333;
     margin-top: 8px;
   }
-  .weather-meta {
+  .weather-meta-row {
     font-size: 17px;
     color: #6b7280;
-    line-height: 1.9;
+    margin-bottom: 10px;
   }
+  .weather-meta-row .weather-icon { margin-right: 8px; }
+  .weather-meta-text { vertical-align: middle; }
 
   .weather-hourly-heading {
     font-size: 13px;
@@ -331,6 +334,35 @@
     return svg;
   }
 
+  function addThermometer(svg, cx, cy, color) {
+    svg.appendChild(svgEl("rect", { x: cx - 2, y: cy - 9, width: 4, height: 12, rx: 2, fill: color }));
+    svg.appendChild(svgEl("circle", { cx: cx, cy: cy + 6, r: 4, fill: color }));
+  }
+
+  function addWindLines(svg, cx, cy, color) {
+    svg.appendChild(svgEl("line", { x1: cx - 10, y1: cy - 5, x2: cx + 6, y2: cy - 5, stroke: color, "stroke-width": 2, "stroke-linecap": "round" }));
+    svg.appendChild(svgEl("line", { x1: cx - 10, y1: cy, x2: cx + 9, y2: cy, stroke: color, "stroke-width": 2, "stroke-linecap": "round" }));
+    svg.appendChild(svgEl("line", { x1: cx - 10, y1: cy + 5, x2: cx + 2, y2: cy + 5, stroke: color, "stroke-width": 2, "stroke-linecap": "round" }));
+  }
+
+  function addDroplet(svg, cx, cy, color) {
+    svg.appendChild(svgEl("circle", { cx: cx, cy: cy + 3, r: 6, fill: color }));
+    svg.appendChild(svgEl("polygon", { points: (cx) + "," + (cy - 10) + " " + (cx - 5) + "," + (cy + 1) + " " + (cx + 5) + "," + (cy + 1), fill: color }));
+  }
+
+  function metaIcon(kind, size) {
+    var svg = svgEl("svg", { viewBox: "0 0 24 24", width: size, height: size, "class": "weather-icon" });
+    var color = "#6b7280";
+    if (kind === "feels") {
+      addThermometer(svg, 12, 12, color);
+    } else if (kind === "wind") {
+      addWindLines(svg, 12, 12, color);
+    } else if (kind === "humidity") {
+      addDroplet(svg, 12, 12, color);
+    }
+    return svg;
+  }
+
   function renderStopCard(stop) {
     var card = document.createElement("div");
     card.className = "stop-card";
@@ -435,19 +467,25 @@
     sideTd.className = "weather-side";
     var meta = document.createElement("div");
     meta.className = "weather-meta";
-    var metaLines = [];
+    var metaItems = [];
     if (typeof current.apparentTemperature === "number") {
-      metaLines.push("Feels like " + Math.round(current.apparentTemperature) + "°C");
+      metaItems.push({ icon: "feels", text: "Feels like " + Math.round(current.apparentTemperature) + "°C" });
     }
     if (typeof current.windSpeed === "number") {
-      metaLines.push("Wind " + Math.round(current.windSpeed) + " m/s");
+      metaItems.push({ icon: "wind", text: "Wind " + Math.round(current.windSpeed) + " m/s" });
     }
     if (typeof current.humidity === "number") {
-      metaLines.push("Humidity " + Math.round(current.humidity) + "%");
+      metaItems.push({ icon: "humidity", text: "Humidity " + Math.round(current.humidity) + "%" });
     }
-    for (var i = 0; i < metaLines.length; i++) {
-      if (i > 0) meta.appendChild(document.createElement("br"));
-      meta.appendChild(document.createTextNode(metaLines[i]));
+    for (var i = 0; i < metaItems.length; i++) {
+      var metaRow = document.createElement("div");
+      metaRow.className = "weather-meta-row";
+      metaRow.appendChild(metaIcon(metaItems[i].icon, 18));
+      var metaText = document.createElement("span");
+      metaText.className = "weather-meta-text";
+      metaText.appendChild(document.createTextNode(metaItems[i].text));
+      metaRow.appendChild(metaText);
+      meta.appendChild(metaRow);
     }
     sideTd.appendChild(meta);
     mainTr.appendChild(sideTd);
