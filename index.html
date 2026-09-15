@@ -113,28 +113,15 @@
     font-weight: bold;
     line-height: 1;
   }
-  .weather-desc {
-    font-size: 22px;
-    font-weight: bold;
-    color: #333333;
-    margin-top: 8px;
-  }
   .weather-meta-row {
-    font-size: 17px;
+    font-size: 18px;
     color: #6b7280;
-    margin-bottom: 10px;
+    margin-bottom: 14px;
   }
-  .weather-meta-row .weather-icon { margin-right: 8px; }
+  .weather-meta-row .weather-icon { margin-right: 10px; }
   .weather-meta-text { vertical-align: middle; }
 
-  .weather-hourly-heading {
-    font-size: 13px;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-top: 20px;
-    margin-bottom: 6px;
-  }
+  .hour-chips { margin-top: 18px; }
   .hour-chip {
     display: inline-block;
     width: 16%;
@@ -456,11 +443,6 @@
     temp.appendChild(document.createTextNode(tempValue));
     primaryTd.appendChild(temp);
 
-    var desc = document.createElement("div");
-    desc.className = "weather-desc";
-    desc.appendChild(document.createTextNode(current.description || "Unknown"));
-    primaryTd.appendChild(desc);
-
     mainTr.appendChild(primaryTd);
 
     var sideTd = document.createElement("td");
@@ -469,18 +451,18 @@
     meta.className = "weather-meta";
     var metaItems = [];
     if (typeof current.apparentTemperature === "number") {
-      metaItems.push({ icon: "feels", text: "Feels like " + Math.round(current.apparentTemperature) + "°C" });
+      metaItems.push({ icon: "feels", text: Math.round(current.apparentTemperature) + "°C" });
     }
     if (typeof current.windSpeed === "number") {
-      metaItems.push({ icon: "wind", text: "Wind " + Math.round(current.windSpeed) + " m/s" });
+      metaItems.push({ icon: "wind", text: Math.round(current.windSpeed) + " m/s" });
     }
     if (typeof current.humidity === "number") {
-      metaItems.push({ icon: "humidity", text: "Humidity " + Math.round(current.humidity) + "%" });
+      metaItems.push({ icon: "humidity", text: Math.round(current.humidity) + "%" });
     }
     for (var i = 0; i < metaItems.length; i++) {
       var metaRow = document.createElement("div");
       metaRow.className = "weather-meta-row";
-      metaRow.appendChild(metaIcon(metaItems[i].icon, 18));
+      metaRow.appendChild(metaIcon(metaItems[i].icon, 28));
       var metaText = document.createElement("span");
       metaText.className = "weather-meta-text";
       metaText.appendChild(document.createTextNode(metaItems[i].text));
@@ -495,10 +477,8 @@
 
     var hourly = weather.hourly || [];
     if (hourly.length) {
-      var heading = document.createElement("div");
-      heading.className = "weather-hourly-heading";
-      heading.appendChild(document.createTextNode("Rest of today"));
-      card.appendChild(heading);
+      var chips = document.createElement("div");
+      chips.className = "hour-chips";
 
       for (var h = 0; h < hourly.length; h++) {
         var hour = hourly[h];
@@ -518,8 +498,10 @@
         chipTemp.appendChild(document.createTextNode(chipTempValue));
         chip.appendChild(chipTemp);
 
-        card.appendChild(chip);
+        chips.appendChild(chip);
       }
+
+      card.appendChild(chips);
     }
 
     return card;
