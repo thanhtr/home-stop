@@ -14,11 +14,11 @@ old device as a display, not interacted with.
   in the `stop` query parameter — a bare code is resolved to a `gtfsId` via the Digitransit geocoding API first. Add `&debug=1` to see
   the raw geocoding response and resolved gtfsId while diagnosing lookup issues. Returns up to 5 upcoming departures.
 - `api/weather.js` is a Vercel serverless function that proxies Open-Meteo (free, no API key required) for current conditions near
-  Vaarala, Vantaa, plus the next 6 hours (`HOURLY_COUNT` in the file — kept short so the hour-chip row stays on one line and the
-  weather pane doesn't grow taller than the other two columns). It geocodes the location name once (cached across warm invocations)
-  and fetches temperature, feels-like, description, wind, humidity, and a small icon category per hour. Add `?debug=1` to see the
-  resolved coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa,
-  not one of the several other Finnish villages with the same name.
+  Vaarala, Vantaa, plus the next 12 hours (`HOURLY_COUNT` in the file; the hour-chip row wraps onto a second line of 6 past that,
+  per `.hour-chip`'s 16%-width CSS). It geocodes the location name once (cached across warm invocations) and fetches temperature,
+  feels-like, description, wind, humidity, and a small icon category per hour. Add `?debug=1` to see the resolved coordinates and
+  raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa, not one of the several
+  other Finnish villages with the same name.
 - `api/traffic.js` is a Vercel serverless function that proxies Fintraffic's [Digitraffic](https://www.digitraffic.fi/en/road-traffic/)
   TMS ("LAM") road sensor data (`tie.digitraffic.fi`, free, no API key) — the same real-time speed/volume feed behind Fintraffic's own
   traffic map. Rather than listing individual incidents, it shows a general traffic-load reading per ring road: it classifies the
@@ -39,10 +39,12 @@ old device as a display, not interacted with.
     reliably excludes it. Check `/api/traffic?debug=1` if numbers ever look off again — `sampleMatchedStation` shows every sensor a
     real matched station reports, and `stationMetadata` shows the bounding-box + road-lookup step.
 - Departures and weather sit side by side in a top row (36%/64%, the weather column wider for its large current-temperature number
-  and icon); the traffic pane is a separate full-width row below, with its two roads' readings arranged side by side rather than
-  stacked so the row stays short. Both rows only stack fully vertically below 480px width. All three panes use large, high-contrast
-  text throughout — this is a kiosk meant to be read from across a room, not a compact widget, so the whole page still fits on screen
-  without scrolling.
+  and icon). Traffic isn't its own pane — it's a compact one-line strip (a colored dot + road name + speed per road, no title, no
+  units) sitting just below the weather card, as its own element (`#trafficCol`, a sibling of `#weatherCol`) rather than nested
+  inside the card's white box, though both live in the same 64%-wide column, since it's a quick glance rather than something that
+  needs its own panel. The row stacks fully vertically below 480px width. Departures and weather use large, high-contrast text —
+  this is a kiosk meant to be read from across a room, not a compact widget — while traffic stays deliberately small since it's a
+  secondary glance, not a primary pane. The whole page fits on screen without scrolling.
 - Weather icons are hand-built inline SVG shapes (sun/cloud/rain/snow/thunder), not emoji — see Old-device compatibility below.
 
 To change the stop shown, the tracked roads, or any refresh interval, edit the constants at the top of the `<script>` in

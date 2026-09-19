@@ -22,9 +22,6 @@
   .stop-col { display: table-cell; width: 36%; vertical-align: top; padding-right: 16px; }
   .weather-col { display: table-cell; width: 64%; vertical-align: top; }
 
-  .traffic-row { margin-top: 20px; }
-  .traffic-col { width: 100%; }
-
   @media (max-width: 480px) {
     .top-row { display: block; }
     .stop-col, .weather-col { display: block; width: 100%; padding-right: 0; }
@@ -137,53 +134,37 @@
   .hour-chip-time { font-size: 13px; color: #6b7280; }
   .hour-chip-temp { font-size: 16px; font-weight: bold; margin-top: 2px; }
 
-  .traffic-items { display: table; width: 100%; table-layout: fixed; }
-  .traffic-item {
-    display: table-cell;
-    vertical-align: top;
-    padding: 0 20px;
-    border-left: 1px solid #e3e5e8;
-  }
-  .traffic-item:first-child { border-left: none; padding-left: 0; }
-  .traffic-item:last-child { padding-right: 0; }
-  .traffic-road-name { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
-  .traffic-speed { font-size: 52px; font-weight: bold; line-height: 1; }
-  .traffic-speed-unit { font-size: 20px; color: #6b7280; margin-left: 8px; }
-  .traffic-level {
+  .traffic-strip { margin-top: 16px; }
+  .traffic-strip-item {
     display: inline-block;
-    margin-top: 10px;
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 18px;
+    margin-right: 32px;
+    font-size: 22px;
     font-weight: bold;
-    color: #ffffff;
   }
-  .traffic-level.free { background: #0a8a3f; }
-  .traffic-level.moderate { background: #b8860b; }
-  .traffic-level.congested { background: #c62828; }
-  .traffic-level.unknown { background: #6b7280; }
-
-  @media (max-width: 480px) {
-    .traffic-items { display: block; }
-    .traffic-item {
-      display: block;
-      width: 100%;
-      padding: 14px 0;
-      border-left: none;
-      border-top: 1px solid #e3e5e8;
-    }
-    .traffic-item:first-child { padding-top: 0; border-top: none; }
+  .traffic-strip-item:last-child { margin-right: 0; }
+  .traffic-dot {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 10px;
+    vertical-align: middle;
   }
+  .traffic-dot.free { background: #0a8a3f; }
+  .traffic-dot.moderate { background: #b8860b; }
+  .traffic-dot.congested { background: #c62828; }
+  .traffic-dot.unknown { background: #6b7280; }
+  .traffic-strip-speed { margin-left: 8px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top-row">
     <div class="stop-col" id="stopCol0"><div class="placeholder">Loading&#8230;</div></div>
-    <div class="weather-col" id="weatherCol"><div class="placeholder">Loading&#8230;</div></div>
-  </div>
-  <div class="traffic-row">
-    <div class="traffic-col" id="trafficCol"><div class="placeholder">Loading&#8230;</div></div>
+    <div class="weather-col">
+      <div id="weatherCol"><div class="placeholder">Loading&#8230;</div></div>
+      <div id="trafficCol"><div class="placeholder">Loading&#8230;</div></div>
+    </div>
   </div>
 </div>
 
@@ -564,58 +545,40 @@
     return card;
   }
 
-  function renderTrafficCard(traffic) {
-    var card = document.createElement("div");
-    card.className = "stop-card";
-
-    var h2 = document.createElement("h2");
-    h2.appendChild(document.createTextNode("Kehä I & III"));
-    card.appendChild(h2);
-
+  function renderTrafficStrip(traffic) {
     var roads = traffic.roads || [];
     if (!roads.length) {
       var empty = document.createElement("div");
       empty.className = "empty";
       empty.appendChild(document.createTextNode("Traffic data unavailable."));
-      card.appendChild(empty);
-      return card;
+      return empty;
     }
 
-    var itemsWrap = document.createElement("div");
-    itemsWrap.className = "traffic-items";
+    var wrap = document.createElement("div");
+    wrap.className = "traffic-strip";
 
     for (var i = 0; i < roads.length; i++) {
       var road = roads[i];
-      var cell = document.createElement("div");
-      cell.className = "traffic-item";
+      var item = document.createElement("span");
+      item.className = "traffic-strip-item";
 
-      var name = document.createElement("div");
-      name.className = "traffic-road-name";
-      name.appendChild(document.createTextNode(road.road));
-      cell.appendChild(name);
+      var dot = document.createElement("span");
+      dot.className = "traffic-dot " + (road.level || "unknown");
+      item.appendChild(dot);
+
+      item.appendChild(document.createTextNode(road.road));
 
       if (typeof road.avgSpeed === "number") {
         var speed = document.createElement("span");
-        speed.className = "traffic-speed";
+        speed.className = "traffic-strip-speed";
         speed.appendChild(document.createTextNode(String(road.avgSpeed)));
-        cell.appendChild(speed);
-
-        var unit = document.createElement("span");
-        unit.className = "traffic-speed-unit";
-        unit.appendChild(document.createTextNode("km/h"));
-        cell.appendChild(unit);
+        item.appendChild(speed);
       }
 
-      var level = document.createElement("div");
-      level.className = "traffic-level " + (road.level || "unknown");
-      level.appendChild(document.createTextNode(road.levelLabel || "No data"));
-      cell.appendChild(level);
-
-      itemsWrap.appendChild(cell);
+      wrap.appendChild(item);
     }
 
-    card.appendChild(itemsWrap);
-    return card;
+    return wrap;
   }
 
   function loadDepartures() {
@@ -684,7 +647,7 @@
         trafficCol.appendChild(errBox);
         return;
       }
-      trafficCol.appendChild(renderTrafficCard(traffic));
+      trafficCol.appendChild(renderTrafficStrip(traffic));
     });
   }
 

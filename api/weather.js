@@ -2,7 +2,7 @@ const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const LOCATION_NAME = "Vaarala";
 const COUNTRY_CODE = "FI";
-const HOURLY_COUNT = 6;
+const HOURLY_COUNT = 12;
 
 // Groups of Open-Meteo's WMO weather_code -> a small icon category the
 // client draws as inline SVG (no emoji/font glyphs, so it's safe on very
