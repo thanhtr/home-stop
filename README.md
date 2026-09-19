@@ -22,14 +22,16 @@ device as a display, not interacted with.
 - `api/traffic.js` is a Vercel serverless function that proxies Fintraffic's [Digitraffic](https://www.digitraffic.fi/en/road-traffic/)
   Traffic Message API (`tie.digitraffic.fi`, free, no API key), filtered to traffic announcements and roadworks on regional road 101
   (Kehä I) and national road 50 (Kehä III). It returns up to 3 of the most recent matching items with the road label, a truncated
-  Finnish-language description, and a release time. **The exact Digitraffic JSON schema could not be verified live from the
-  environment this was written in** (that domain isn't reachable from there), so the road-number extraction in
-  `roadLabelForAnnouncement()` is based on documented field names (`locationDetails.roadAddressLocation.primaryPoint/secondaryPoint.roadAddress.road`)
-  and defensively skips any announcement it can't parse rather than failing the whole request. Check `/api/traffic?debug=1` once
-  deployed — it echoes a raw sample feature — and adjust the field paths in `traffic.js` if Digitraffic's actual shape differs.
-- The three columns (departures / weather / traffic, 26%/40%/34%) sit side by side in one row so the whole page fits on screen
-  without scrolling; they only stack vertically below 480px width. The weather column is still the widest, with a large
-  current-temperature number and icon, since that's the point of a kiosk display — legible from across a room, not a compact widget.
+  description, and a release time — verified against production via `/api/traffic?debug=1`, which echoes a raw sample feature if
+  Digitraffic's shape ever changes and the road-number matching in `roadLabelForAnnouncement()` needs adjusting (it defensively skips
+  any announcement it can't parse rather than failing the whole request). The description prefers `comment` (mainly present on
+  `TRAFFIC_ANNOUNCEMENT`s), then `location.description` (the actual roadwork detail — `additionalInformation` is just a generic
+  boilerplate URL repeated on every message, not useful on its own), then `additionalInformation`, then the title.
+- Departures and weather sit side by side in a top row (36%/64%, the weather column wider for its large current-temperature number
+  and icon); the traffic pane is a separate full-width row below, with its up-to-3 items arranged side by side rather than stacked so
+  the row stays short. Both rows only stack fully vertically below 480px width. All three panes use large, high-contrast text
+  throughout — this is a kiosk meant to be read from across a room, not a compact widget, so the whole page still fits on screen
+  without scrolling.
 - Weather icons are hand-built inline SVG shapes (sun/cloud/rain/snow/thunder), not emoji — see Old-device compatibility below.
 
 To change the stop shown, the tracked roads, or any refresh interval, edit the constants at the top of the `<script>` in
