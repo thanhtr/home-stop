@@ -32,11 +32,12 @@ old device as a display, not interacted with.
     start would be excessive, so `resolveStationRoadMap()` first narrows the station list to a generous Helsinki-metro bounding box
     (`HELSINKI_BBOX`, using the list endpoint's coordinates) and only fetches detail for those candidates, cached across warm
     invocations.
-  - The live speed data itself, from `/api/tms/v1/stations/data`, still isn't verified live — matching sensor names loosely (anything
-    containing `KESKINOPEUS`, Finnish for "average speed") is a guess at Digitraffic's actual sensor naming, same as the station-list
-    key it's read from (tries `stations`/`tmsStations`/`features`). Check `/api/traffic?debug=1` once deployed:
-    `stationMetadata.candidatesInBoundingBox`/`roadNumbersSeen` confirm the bounding-box + detail-fetch step worked, and
-    `sampleLiveStation` (present regardless of match) shows the live-data shape if speeds still don't show up.
+  - The live speed data, from `/api/tms/v1/stations/data`, is now verified against production too: each station reports sensors named
+    `KESKINOPEUS_{5,60}MIN_{LIUKUVA,KIINTEA}_SUUNTA{1,2}` (Finnish for "average speed, N-min rolling/fixed, direction 1/2"), but also a
+    same-named `..._VVAPAAS1/2` variant with unit `"***"` that isn't a speed at all — some free-flow-speed ratio — which name-only
+    matching wrongly averaged in alongside the real numbers at first. `isSpeedSensor()` now also requires `unit === "km/h"`, which
+    reliably excludes it. Check `/api/traffic?debug=1` if numbers ever look off again — `sampleMatchedStation` shows every sensor a
+    real matched station reports, and `stationMetadata` shows the bounding-box + road-lookup step.
 - Departures and weather sit side by side in a top row (36%/64%, the weather column wider for its large current-temperature number
   and icon); the traffic pane is a separate full-width row below, with its two roads' readings arranged side by side rather than
   stacked so the row stays short. Both rows only stack fully vertically below 480px width. All three panes use large, high-contrast

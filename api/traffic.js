@@ -99,12 +99,18 @@ async function resolveStationRoadMap() {
 // Digitraffic's average-speed sensors are named e.g.
 // "KESKINOPEUS_5MIN_LIUKUVA_SUUNTA1" / "..._SUUNTA2" (Finnish for "average
 // speed, 5-min rolling, direction 1/2"), with a coarser "60MIN" variant too.
-// Match loosely on "KESKINOPEUS" rather than the full name in case the exact
-// suffix differs from what's assumed here, and prefer the finest-grained
-// sensors available on a given station so directions aren't mixed across
-// different averaging windows.
-function isSpeedSensorName(name) {
-  return typeof name === "string" && name.toUpperCase().indexOf("KESKINOPEUS") !== -1;
+// Confirmed live that stations also report a second family with "KESKINOPEUS"
+// AND "5MIN" in the name but a "_VVAPAAS1/2" suffix and unit "***" -- some
+// free-flow-speed ratio, not an actual speed -- so name matching alone
+// wrongly pulls those in too. The real speed sensors are reliably
+// unit === "km/h"; require both.
+function isSpeedSensor(sensor) {
+  return (
+    sensor &&
+    typeof sensor.name === "string" &&
+    sensor.name.toUpperCase().indexOf("KESKINOPEUS") !== -1 &&
+    sensor.unit === "km/h"
+  );
 }
 
 function speedSensorGranularity(name) {
@@ -156,7 +162,7 @@ module.exports = async function handler(req, res) {
       let bestGranularity = null;
       const candidates = [];
       for (const sensor of sensorValues) {
-        if (!isSpeedSensorName(sensor.name) || typeof sensor.value !== "number") continue;
+        if (!isSpeedSensor(sensor) || typeof sensor.value !== "number") continue;
         const granularity = speedSensorGranularity(sensor.name);
         if (bestGranularity === null || granularity < bestGranularity) {
           bestGranularity = granularity;
