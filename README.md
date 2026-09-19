@@ -21,19 +21,22 @@ old device as a display, not interacted with.
   not one of the several other Finnish villages with the same name.
 - `api/traffic.js` is a Vercel serverless function that proxies Fintraffic's [Digitraffic](https://www.digitraffic.fi/en/road-traffic/)
   TMS ("LAM") road sensor data (`tie.digitraffic.fi`, free, no API key) — the same real-time speed/volume feed behind Fintraffic's own
-  traffic map. Rather than listing individual incidents, it shows a general traffic-load reading per ring road: it fetches every TMS
-  station's road number once from the `/api/v3/metadata/tms-stations` metadata endpoint (cached across warm invocations, via
-  `resolveStationRoadMap()` — note this is a *different, richer* endpoint than `/api/tms/v1/stations`, which turned out on production
-  to carry no road address at all), keeps the stations on regional road 101 (Kehä I) and national road 50 (Kehä III), then for each
-  request averages the live speed sensors for those stations from `/api/tms/v1/stations/data` and classifies the result as Free flow
-  (≥70 km/h) / Slow (45–69) / Congested (<45). This answers "how's the whole loop right now", which is more useful for an end-to-end
-  drive than a specific announcement, at the cost of being a ring-wide average that can smooth over a jam on just one stretch.
-  **The exact field names on both endpoints (road number on the metadata side, the station-list key and sensor naming on the live-data
-  side) still aren't fully verified live** (`tie.digitraffic.fi` isn't reachable from the environment this was written in), so
-  `extractRoadNumber()` / `extractStationIds()` try several plausible property names and `isSpeedSensorName()` matches loosely
-  (anything containing `KESKINOPEUS`, Finnish for "average speed") rather than assuming one exact shape. Check `/api/traffic?debug=1`
-  once deployed — it echoes `matchedStations`, `stationMetadata` (a raw metadata sample plus every road number actually seen), and
-  `sampleLiveStation` (a raw live-data sample regardless of match) — and adjust those functions if the counts still look wrong.
+  traffic map. Rather than listing individual incidents, it shows a general traffic-load reading per ring road: it classifies the
+  average current speed on regional road 101 (Kehä I) and national road 50 (Kehä III) as Free flow (≥70 km/h) / Slow (45–69) /
+  Congested (<45). This answers "how's the whole loop right now", which is more useful for an end-to-end drive than a specific
+  announcement, at the cost of being a ring-wide average that can smooth over a jam on just one stretch.
+  - Getting the road number per station took two rounds against live production data: `/api/tms/v1/stations` (the station list) turned
+    out to carry no road address at all across any of its ~519 nationwide stations (confirmed live), and a guessed `/api/v3/metadata/…`
+    replacement 404'd. The road address only exists on the single-station detail endpoint, `/api/tms/v1/stations/{id}`, under
+    `properties.roadAddress.roadNumber` (confirmed live against station 89) — fetching that for every station nationwide on each cold
+    start would be excessive, so `resolveStationRoadMap()` first narrows the station list to a generous Helsinki-metro bounding box
+    (`HELSINKI_BBOX`, using the list endpoint's coordinates) and only fetches detail for those candidates, cached across warm
+    invocations.
+  - The live speed data itself, from `/api/tms/v1/stations/data`, still isn't verified live — matching sensor names loosely (anything
+    containing `KESKINOPEUS`, Finnish for "average speed") is a guess at Digitraffic's actual sensor naming, same as the station-list
+    key it's read from (tries `stations`/`tmsStations`/`features`). Check `/api/traffic?debug=1` once deployed:
+    `stationMetadata.candidatesInBoundingBox`/`roadNumbersSeen` confirm the bounding-box + detail-fetch step worked, and
+    `sampleLiveStation` (present regardless of match) shows the live-data shape if speeds still don't show up.
 - Departures and weather sit side by side in a top row (36%/64%, the weather column wider for its large current-temperature number
   and icon); the traffic pane is a separate full-width row below, with its two roads' readings arranged side by side rather than
   stacked so the row stays short. Both rows only stack fully vertically below 480px width. All three panes use large, high-contrast

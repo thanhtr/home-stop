@@ -1,7 +1,14 @@
-// /api/tms/v1/stations turned out to be a slim endpoint with no road
-// address at all (id/tmsNumber/name/bearing/collectionStatus/state only,
-// confirmed live) -- road numbers live in the richer v3 metadata endpoint.
-const STATIONS_URL = "https://tie.digitraffic.fi/api/v3/metadata/tms-stations";
+// /api/tms/v1/stations (the list endpoint) is confirmed live to have no
+// road address at all (id/tmsNumber/name/bearing/collectionStatus/state
+// only) across all ~519 nationwide stations -- but it does have
+// coordinates. The road address (properties.roadAddress.roadNumber) only
+// shows up on the single-station detail endpoint, /api/tms/v1/stations/{id}
+// (confirmed live against station 89). Fetching detail for all ~519
+// stations nationwide on every cold start would be excessive, so the list
+// is first narrowed to a rough Helsinki-metro bounding box covering both
+// ring roads, and only those candidates get a detail fetch.
+const STATIONS_URL = "https://tie.digitraffic.fi/api/tms/v1/stations";
+const STATION_DETAIL_URL = (id) => `https://tie.digitraffic.fi/api/tms/v1/stations/${id}`;
 const STATIONS_DATA_URL = "https://tie.digitraffic.fi/api/tms/v1/stations/data";
 
 // Kehä I is signed as regional road 101, Kehä III as national road 50.
@@ -10,30 +17,36 @@ const ROADS = [
   { number: 50, label: "Kehä III" },
 ];
 
+// Generous box around the Helsinki metro area -- both ring roads sit
+// comfortably inside lat 60.10-60.45 / lon 24.60-25.35.
+const HELSINKI_BBOX = { minLat: 60.1, maxLat: 60.45, minLon: 24.6, maxLon: 25.35 };
+
 // Cached across warm serverless invocations -- which TMS station sits on
 // which road changes essentially never, unlike the live speed readings.
 let cachedStationRoadMap = null;
 let cachedStationDebugInfo = null;
 
-// The exact property name for a station's road number on the v3 metadata
-// endpoint isn't verified live (see README) -- try the plausible variants.
-function extractRoadNumber(props) {
-  if (props.roadAddress && typeof props.roadAddress.road === "number") {
-    return props.roadAddress.road;
-  }
-  if (typeof props.roadNumber === "number") return props.roadNumber;
-  if (typeof props.road_number === "number") return props.road_number;
-  return null;
+function isWithinHelsinkiBbox(feature) {
+  const coords = feature.geometry && feature.geometry.coordinates;
+  if (!coords || coords.length < 2) return false;
+  const lon = coords[0];
+  const lat = coords[1];
+  return (
+    lat >= HELSINKI_BBOX.minLat &&
+    lat <= HELSINKI_BBOX.maxLat &&
+    lon >= HELSINKI_BBOX.minLon &&
+    lon <= HELSINKI_BBOX.maxLon
+  );
 }
 
-// Likewise for the station identifier -- collect every plausible id field so
-// whichever one /stations/data actually keys its entries by still matches.
-function extractStationIds(props) {
-  const ids = [];
-  if (props.id != null) ids.push(props.id);
-  if (props.tmsNumber != null) ids.push(props.tmsNumber);
-  if (props.roadStationId != null) ids.push(props.roadStationId);
-  return ids;
+async function fetchStationDetail(id) {
+  try {
+    const res = await fetch(STATION_DETAIL_URL(id));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
 }
 
 async function resolveStationRoadMap() {
@@ -41,36 +54,44 @@ async function resolveStationRoadMap() {
     return cachedStationRoadMap;
   }
 
-  const res = await fetch(STATIONS_URL);
-  if (!res.ok) {
-    throw new Error(`TMS station metadata failed with HTTP ${res.status}`);
+  const listRes = await fetch(STATIONS_URL);
+  if (!listRes.ok) {
+    throw new Error(`TMS station list failed with HTTP ${listRes.status}`);
   }
-  const data = await res.json();
-  const features = data.features || [];
+  const listData = await listRes.json();
+  const allFeatures = listData.features || [];
+  const candidates = allFeatures.filter(isWithinHelsinkiBbox);
+
+  const details = await Promise.all(
+    candidates.map((feature) => fetchStationDetail(feature.properties.id))
+  );
 
   const map = {};
   const roadNumbersSeen = new Set();
+  let sampleDetail = null;
 
-  for (const feature of features) {
-    const props = feature.properties || {};
-    const roadNumber = extractRoadNumber(props);
+  for (const detail of details) {
+    if (!detail) continue;
+    const props = detail.properties || {};
+    if (!sampleDetail) sampleDetail = detail;
+
+    const roadNumber = props.roadAddress && props.roadAddress.roadNumber;
     if (typeof roadNumber === "number") roadNumbersSeen.add(roadNumber);
 
     const match = ROADS.find((r) => r.number === roadNumber);
     if (!match) continue;
-    for (const id of extractStationIds(props)) {
-      map[id] = match.label;
-    }
+    if (props.id != null) map[props.id] = match.label;
+    if (props.tmsNumber != null) map[props.tmsNumber] = match.label;
   }
 
   cachedStationRoadMap = map;
-  // Not returned to the client unless ?debug=1 -- lets us see the actual
-  // station metadata shape without guessing further if matching comes up
-  // empty (see README on the TMS schema not being verified pre-deploy).
+  // Not returned to the client unless ?debug=1.
   cachedStationDebugInfo = {
-    totalFeatures: features.length,
+    totalStationsNationwide: allFeatures.length,
+    candidatesInBoundingBox: candidates.length,
+    detailsFetchedOk: details.filter(Boolean).length,
     roadNumbersSeen: Array.from(roadNumbersSeen).sort((a, b) => a - b),
-    sampleFeature: features[0] || null,
+    sampleDetailFeature: sampleDetail,
   };
   return map;
 }
