@@ -84,11 +84,18 @@ async function resolveStationRoadMap() {
 
     const match = ROADS.find((r) => r.number === roadNumber);
     if (!match) continue;
+    // Key by id alone -- live /stations/data records always carried their
+    // own id (confirmed live), and id/tmsNumber are different numbering
+    // schemes that could otherwise collide across two different stations.
     if (props.id != null) map[props.id] = match.label;
-    if (props.tmsNumber != null) map[props.tmsNumber] = match.label;
   }
 
-  cachedStationRoadMap = map;
+  // Only cache a result that actually found something -- caching {} after a
+  // transient failure (e.g. every detail fetch failing) would otherwise
+  // wedge the traffic pane at "No data" until the next cold start.
+  if (Object.keys(map).length > 0) {
+    cachedStationRoadMap = map;
+  }
   // Not returned to the client unless ?debug=1.
   cachedStationDebugInfo = {
     totalStationsNationwide: allFeatures.length,
@@ -143,9 +150,14 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // Field name for the station list on this endpoint isn't verified live
-    // (see README) -- try the plausible variants rather than assume one.
-    const stations = data.stations || data.tmsStations || data.features || [];
+    // data.stations is confirmed live as the correct, populated key, but
+    // check .length rather than truthiness so an empty array here can't
+    // mask real data under one of the other plausible names.
+    const stations =
+      (data.stations && data.stations.length ? data.stations : null) ||
+      (data.tmsStations && data.tmsStations.length ? data.tmsStations : null) ||
+      data.features ||
+      [];
 
     const totals = {};
     for (const road of ROADS) {
@@ -156,8 +168,9 @@ module.exports = async function handler(req, res) {
     let sampleMatchedStation = null;
 
     for (const station of stations) {
-      const stationId = station.id != null ? station.id : station.tmsNumber;
-      const roadLabel = stationRoadMap[stationId];
+      // stationRoadMap is keyed by id alone (see resolveStationRoadMap) --
+      // live records are confirmed to always carry their own id.
+      const roadLabel = stationRoadMap[station.id];
       if (!roadLabel) continue;
       matchedStations++;
       if (!sampleMatchedStation) sampleMatchedStation = station;
