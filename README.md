@@ -21,10 +21,13 @@ old device as a display, not interacted with.
   other Finnish villages with the same name.
 - `api/traffic.js` is a Vercel serverless function that proxies Fintraffic's [Digitraffic](https://www.digitraffic.fi/en/road-traffic/)
   TMS ("LAM") road sensor data (`tie.digitraffic.fi`, free, no API key) — the same real-time speed/volume feed behind Fintraffic's own
-  traffic map. Rather than listing individual incidents, it shows a general traffic-load reading per ring road: it classifies the
-  average current speed on regional road 101 (Kehä I) and national road 50 (Kehä III) as Free flow (≥70 km/h) / Slow (45–69) /
-  Congested (<45). This answers "how's the whole loop right now", which is more useful for an end-to-end drive than a specific
-  announcement, at the cost of being a ring-wide average that can smooth over a jam on just one stretch.
+  traffic map. Rather than listing individual incidents, it shows a general traffic-load reading per road (`ROADS` in the file):
+  regional road 101 (Kehä I), national road 50 (Kehä III), and national road 4 (E75, the Helsinki–Lahti–north corridor — only its
+  Helsinki-metro end falls inside the bounding box below, which is what's relevant here anyway). Each is classified from its average
+  current speed as Free flow (≥70 km/h) / Slow (45–69) / Congested (<45). This answers "how's the road right now", which is more
+  useful for an end-to-end drive than a specific announcement, at the cost of being a road-wide average that can smooth over a jam on
+  just one stretch. Adding another road is just another `{ number, label }` entry in `ROADS` — the lookup and averaging are generic
+  over however many are listed.
   - Getting the road number per station took two rounds against live production data: `/api/tms/v1/stations` (the station list) turned
     out to carry no road address at all across any of its ~519 nationwide stations (confirmed live), and a guessed `/api/v3/metadata/…`
     replacement 404'd. The road address only exists on the single-station detail endpoint, `/api/tms/v1/stations/{id}`, under
@@ -42,7 +45,8 @@ old device as a display, not interacted with.
   and icon). Traffic isn't its own pane — it's a compact one-line strip (a colored dot + road name + speed per road, no title, no
   units) sitting just below the weather card, as its own element (`#trafficCol`, a sibling of `#weatherCol`) rather than nested
   inside the card's white box, though both live in the same 64%-wide column, since it's a quick glance rather than something that
-  needs its own panel. The row stacks fully vertically below 480px width. Departures and weather use large, high-contrast text —
+  needs its own panel. The strip's roads are laid out as equal-width table cells spread across that full column width (rather than
+  clustered on the left), and it stacks each road onto its own line below 480px width, same as the top row. Departures and weather use large, high-contrast text —
   this is a kiosk meant to be read from across a room, not a compact widget — while traffic stays deliberately small since it's a
   secondary glance, not a primary pane. The whole page fits on screen without scrolling.
 - Weather icons are hand-built inline SVG shapes (sun/cloud/rain/snow/thunder), not emoji — see Old-device compatibility below.

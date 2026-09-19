@@ -12,9 +12,13 @@ const STATION_DETAIL_URL = (id) => `https://tie.digitraffic.fi/api/tms/v1/statio
 const STATIONS_DATA_URL = "https://tie.digitraffic.fi/api/tms/v1/stations/data";
 
 // Kehä I is signed as regional road 101, Kehä III as national road 50.
+// E75 (Helsinki-Lahti-north) runs on national road 4 -- only its southern,
+// Helsinki-metro end falls inside HELSINKI_BBOX below, which is the
+// relevant stretch for this kiosk anyway.
 const ROADS = [
   { number: 101, label: "Kehä I" },
   { number: 50, label: "Kehä III" },
+  { number: 4, label: "E75" },
 ];
 
 // Generous box around the Helsinki metro area -- both ring roads sit
