@@ -146,25 +146,29 @@
   }
   .traffic-item:first-child { border-left: none; padding-left: 0; }
   .traffic-item:last-child { padding-right: 0; }
-  .traffic-road {
+  .traffic-road-name { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
+  .traffic-speed { font-size: 52px; font-weight: bold; line-height: 1; }
+  .traffic-speed-unit { font-size: 20px; color: #6b7280; margin-left: 8px; }
+  .traffic-level {
     display: inline-block;
-    background: #c62828;
-    color: #ffffff;
-    font-weight: bold;
-    font-size: 16px;
-    padding: 5px 10px;
+    margin-top: 10px;
+    padding: 6px 14px;
     border-radius: 6px;
-    margin-bottom: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffffff;
   }
-  .traffic-road.roadwork { background: #b8860b; }
-  .traffic-desc { font-size: 19px; line-height: 1.4; }
+  .traffic-level.free { background: #0a8a3f; }
+  .traffic-level.moderate { background: #b8860b; }
+  .traffic-level.congested { background: #c62828; }
+  .traffic-level.unknown { background: #6b7280; }
 
   @media (max-width: 480px) {
     .traffic-items { display: block; }
     .traffic-item {
       display: block;
       width: 100%;
-      padding: 12px 0;
+      padding: 14px 0;
       border-left: none;
       border-top: 1px solid #e3e5e8;
     }
@@ -568,11 +572,11 @@
     h2.appendChild(document.createTextNode("Kehä I & III"));
     card.appendChild(h2);
 
-    var items = traffic.items || [];
-    if (!items.length) {
+    var roads = traffic.roads || [];
+    if (!roads.length) {
       var empty = document.createElement("div");
       empty.className = "empty";
-      empty.appendChild(document.createTextNode("No incidents reported."));
+      empty.appendChild(document.createTextNode("Traffic data unavailable."));
       card.appendChild(empty);
       return card;
     }
@@ -580,20 +584,32 @@
     var itemsWrap = document.createElement("div");
     itemsWrap.className = "traffic-items";
 
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
+    for (var i = 0; i < roads.length; i++) {
+      var road = roads[i];
       var cell = document.createElement("div");
       cell.className = "traffic-item";
 
-      var badge = document.createElement("span");
-      badge.className = "traffic-road" + (item.situationType === "ROAD_WORK" ? " roadwork" : "");
-      badge.appendChild(document.createTextNode(item.road));
-      cell.appendChild(badge);
+      var name = document.createElement("div");
+      name.className = "traffic-road-name";
+      name.appendChild(document.createTextNode(road.road));
+      cell.appendChild(name);
 
-      var desc = document.createElement("div");
-      desc.className = "traffic-desc";
-      desc.appendChild(document.createTextNode(item.description || item.title || "Traffic disruption."));
-      cell.appendChild(desc);
+      if (typeof road.avgSpeed === "number") {
+        var speed = document.createElement("span");
+        speed.className = "traffic-speed";
+        speed.appendChild(document.createTextNode(String(road.avgSpeed)));
+        cell.appendChild(speed);
+
+        var unit = document.createElement("span");
+        unit.className = "traffic-speed-unit";
+        unit.appendChild(document.createTextNode("km/h"));
+        cell.appendChild(unit);
+      }
+
+      var level = document.createElement("div");
+      level.className = "traffic-level " + (road.level || "unknown");
+      level.appendChild(document.createTextNode(road.levelLabel || "No data"));
+      cell.appendChild(level);
 
       itemsWrap.appendChild(cell);
     }

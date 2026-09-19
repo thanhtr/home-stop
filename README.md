@@ -1,7 +1,7 @@
 # home-stop
 HSL home stop — a fixed info-panel page (with three tiny serverless functions) showing live departures for the Vaaralan Talkootie
-stop (V9305) side by side with current weather and the Kehä I / Kehä III traffic situation. Meant to be left running on an old
-device as a display, not interacted with.
+stop (V9305) side by side with current weather and the general traffic load on Kehä I / Kehä III. Meant to be left running on an
+old device as a display, not interacted with.
 
 ## How it works
 
@@ -20,17 +20,22 @@ device as a display, not interacted with.
   resolved coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa,
   not one of the several other Finnish villages with the same name.
 - `api/traffic.js` is a Vercel serverless function that proxies Fintraffic's [Digitraffic](https://www.digitraffic.fi/en/road-traffic/)
-  Traffic Message API (`tie.digitraffic.fi`, free, no API key), filtered to traffic announcements and roadworks on regional road 101
-  (Kehä I) and national road 50 (Kehä III). It returns up to 3 of the most recent matching items with the road label, a truncated
-  description, and a release time — verified against production via `/api/traffic?debug=1`, which echoes a raw sample feature if
-  Digitraffic's shape ever changes and the road-number matching in `roadLabelForAnnouncement()` needs adjusting (it defensively skips
-  any announcement it can't parse rather than failing the whole request). The description prefers `comment` (mainly present on
-  `TRAFFIC_ANNOUNCEMENT`s), then `location.description` (the actual roadwork detail — `additionalInformation` is just a generic
-  boilerplate URL repeated on every message, not useful on its own), then `additionalInformation`, then the title.
+  TMS ("LAM") road sensor API (`tie.digitraffic.fi`, free, no API key) — the same real-time speed/volume feed behind Fintraffic's own
+  traffic map. Rather than listing individual incidents, it shows a general traffic-load reading per ring road: it fetches every TMS
+  station's road number once (cached across warm invocations, via `resolveStationRoadMap()`), keeps the ones on regional road 101
+  (Kehä I) and national road 50 (Kehä III), then for each request averages the current speed sensors across all matching stations
+  and classifies the result as Free flow (≥70 km/h) / Slow (45–69) / Congested (<45). This answers "how's the whole loop right now",
+  which is more useful for an end-to-end drive than a specific announcement, at the cost of being a ring-wide average that can smooth
+  over a jam on just one stretch. **The exact TMS JSON field names (the station list key on `/stations/data`, the speed sensor naming
+  convention) could not be verified live from the environment this was written in** (`tie.digitraffic.fi` isn't reachable from
+  there), so `api/traffic.js` matches sensor names loosely (anything containing `KESKINOPEUS`, Finnish for "average speed") and tries
+  several plausible keys for the station list. Check `/api/traffic?debug=1` once deployed — it echoes `matchedStations` and a raw
+  `sampleStation` — and adjust `isSpeedSensorName()` / the station-list fallback in the file if the counts look wrong or speeds don't
+  show up.
 - Departures and weather sit side by side in a top row (36%/64%, the weather column wider for its large current-temperature number
-  and icon); the traffic pane is a separate full-width row below, with its up-to-3 items arranged side by side rather than stacked so
-  the row stays short. Both rows only stack fully vertically below 480px width. All three panes use large, high-contrast text
-  throughout — this is a kiosk meant to be read from across a room, not a compact widget, so the whole page still fits on screen
+  and icon); the traffic pane is a separate full-width row below, with its two roads' readings arranged side by side rather than
+  stacked so the row stays short. Both rows only stack fully vertically below 480px width. All three panes use large, high-contrast
+  text throughout — this is a kiosk meant to be read from across a room, not a compact widget, so the whole page still fits on screen
   without scrolling.
 - Weather icons are hand-built inline SVG shapes (sun/cloud/rain/snow/thunder), not emoji — see Old-device compatibility below.
 
@@ -62,9 +67,10 @@ on Vercel's Node runtime, not on the device, so they're free to use modern JS.
    to the Vercel runtime — it must also exist as a Vercel environment variable (either add it directly in Vercel, or have your deploy
    workflow pass it through). No key is needed for weather or traffic — Open-Meteo and Digitraffic are both free and unauthenticated.
 2. Deploy this repo to Vercel (import the existing GitHub repo, don't let it clone into a new one).
-3. Open the deployed page — it shows departures for `V9305`, current weather, and the Kehä I / Kehä III traffic situation
-   immediately, no configuration needed. If the traffic pane shows an error or stays empty, hit `/api/traffic?debug=1` and check
-   `sampleFeature` against the field paths in `api/traffic.js` (see the note above about the schema not being verified pre-deploy).
+3. Open the deployed page — it shows departures for `V9305`, current weather, and the Kehä I / Kehä III traffic load immediately,
+   no configuration needed. If the traffic pane shows "No data" or an error, hit `/api/traffic?debug=1` and check `matchedStations`
+   and `sampleStation` against the field names in `api/traffic.js` (see the note above about the TMS schema not being verified
+   pre-deploy).
 
 ## Turning the device into a kiosk
 

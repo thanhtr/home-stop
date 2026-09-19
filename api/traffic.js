@@ -1,4 +1,5 @@
-const MESSAGES_URL = "https://tie.digitraffic.fi/api/traffic-message/v1/messages";
+const STATIONS_URL = "https://tie.digitraffic.fi/api/tms/v1/stations";
+const STATIONS_DATA_URL = "https://tie.digitraffic.fi/api/tms/v1/stations/data";
 
 // Kehä I is signed as regional road 101, Kehä III as national road 50.
 const ROADS = [
@@ -6,121 +7,132 @@ const ROADS = [
   { number: 50, label: "Kehä III" },
 ];
 
-const RELEVANT_SITUATION_TYPES = ["TRAFFIC_ANNOUNCEMENT", "ROAD_WORK"];
-const MAX_ITEMS = 3;
-const DESCRIPTION_MAX_LENGTH = 110;
+// Cached across warm serverless invocations -- which TMS station sits on
+// which road changes essentially never, unlike the live speed readings.
+let cachedStationRoadMap = null;
 
-function roadLabelForAnnouncement(announcement) {
-  const details = announcement.locationDetails || {};
-  const location = details.roadAddressLocation || {};
-  const candidates = [];
-
-  if (location.primaryPoint && location.primaryPoint.roadAddress) {
-    candidates.push(location.primaryPoint.roadAddress.road);
-  }
-  if (location.secondaryPoint && location.secondaryPoint.roadAddress) {
-    candidates.push(location.secondaryPoint.roadAddress.road);
-  }
-  if (typeof location.roadNumber === "number") {
-    candidates.push(location.roadNumber);
+async function resolveStationRoadMap() {
+  if (cachedStationRoadMap) {
+    return cachedStationRoadMap;
   }
 
-  for (const road of ROADS) {
-    if (candidates.indexOf(road.number) !== -1) {
-      return road.label;
+  const res = await fetch(STATIONS_URL);
+  if (!res.ok) {
+    throw new Error(`TMS station metadata failed with HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const features = data.features || [];
+
+  const map = {};
+  for (const feature of features) {
+    const props = feature.properties || {};
+    const roadNumber = props.roadAddress && props.roadAddress.road;
+    const match = ROADS.find((r) => r.number === roadNumber);
+    if (match && props.id != null) {
+      map[props.id] = match.label;
     }
   }
-  return null;
+  cachedStationRoadMap = map;
+  return map;
 }
 
-// Prefer the Finnish-language copy of an announcement (Digitraffic ships one
-// per language, with the language code seen as "FI" in production); fall
-// back to whatever is first.
-function pickText(announcements) {
-  return (
-    announcements.find((a) => (a.language || "").toUpperCase() === "FI") ||
-    announcements[0] ||
-    {}
-  );
+// Digitraffic's average-speed sensors are named e.g.
+// "KESKINOPEUS_5MIN_LIUKUVA_SUUNTA1" / "..._SUUNTA2" (Finnish for "average
+// speed, 5-min rolling, direction 1/2"), with a coarser "60MIN" variant too.
+// Match loosely on "KESKINOPEUS" rather than the full name in case the exact
+// suffix differs from what's assumed here, and prefer the finest-grained
+// sensors available on a given station so directions aren't mixed across
+// different averaging windows.
+function isSpeedSensorName(name) {
+  return typeof name === "string" && name.toUpperCase().indexOf("KESKINOPEUS") !== -1;
 }
 
-function truncate(text) {
-  if (!text || text.length <= DESCRIPTION_MAX_LENGTH) return text;
-  return text.slice(0, DESCRIPTION_MAX_LENGTH - 1).trim() + "…";
+function speedSensorGranularity(name) {
+  const upper = (name || "").toUpperCase();
+  if (upper.indexOf("5MIN") !== -1) return 0;
+  if (upper.indexOf("60MIN") !== -1) return 1;
+  return 2;
 }
 
-// Digitraffic's free-text fields come with literal newlines and stray
-// trailing spaces (e.g. "Tie 101, eli Kehä I, Helsinki. Tietyö. ").
-function cleanText(text) {
-  if (!text) return text;
-  return text.replace(/\s*\n+\s*/g, " ").replace(/\s+/g, " ").trim();
+function classifySpeed(avgSpeed) {
+  if (avgSpeed >= 70) return { level: "free", label: "Free flow" };
+  if (avgSpeed >= 45) return { level: "moderate", label: "Slow" };
+  return { level: "congested", label: "Congested" };
 }
 
 module.exports = async function handler(req, res) {
   const debug = req.query.debug === "1";
 
   try {
-    const upstream = await fetch(`${MESSAGES_URL}?includeAreaGeometry=false`);
-    const data = await upstream.json();
+    const stationRoadMap = await resolveStationRoadMap();
 
-    if (!upstream.ok) {
-      res.status(upstream.status).json(data);
+    const dataRes = await fetch(STATIONS_DATA_URL);
+    const data = await dataRes.json();
+    if (!dataRes.ok) {
+      res.status(dataRes.status).json(data);
       return;
     }
 
-    const features = data.features || [];
-    const items = [];
-    let skipped = 0;
+    // Field name for the station list on this endpoint isn't verified live
+    // (see README) -- try the plausible variants rather than assume one.
+    const stations = data.stations || data.tmsStations || data.features || [];
 
-    for (let i = 0; i < features.length; i++) {
-      try {
-        const props = features[i].properties || {};
-        if (RELEVANT_SITUATION_TYPES.indexOf(props.situationType) === -1) continue;
+    const totals = {};
+    for (const road of ROADS) {
+      totals[road.label] = { sum: 0, count: 0 };
+    }
 
-        const announcements = props.announcements || [];
-        let road = null;
-        for (let a = 0; a < announcements.length && !road; a++) {
-          road = roadLabelForAnnouncement(announcements[a]);
+    let matchedStations = 0;
+    let sampleStation = null;
+
+    for (const station of stations) {
+      const stationId = station.id != null ? station.id : station.tmsNumber;
+      const roadLabel = stationRoadMap[stationId];
+      if (!roadLabel) continue;
+      matchedStations++;
+      if (!sampleStation) sampleStation = station;
+
+      const sensorValues = station.sensorValues || [];
+      let bestGranularity = null;
+      const candidates = [];
+      for (const sensor of sensorValues) {
+        if (!isSpeedSensorName(sensor.name) || typeof sensor.value !== "number") continue;
+        const granularity = speedSensorGranularity(sensor.name);
+        if (bestGranularity === null || granularity < bestGranularity) {
+          bestGranularity = granularity;
         }
-        if (!road) continue;
-
-        const text = pickText(announcements);
-        // "comment" carries the human-written incident summary when present
-        // (mainly TRAFFIC_ANNOUNCEMENT); ROAD_WORK items instead put the
-        // useful, item-specific detail in location.description, since
-        // additionalInformation is just a generic boilerplate URL repeated
-        // on every message.
-        const rawDescription =
-          text.comment ||
-          (text.location && text.location.description) ||
-          text.additionalInformation ||
-          text.title ||
-          null;
-        items.push({
-          road: road,
-          situationType: props.situationType,
-          title: cleanText(text.title) || null,
-          description: truncate(cleanText(rawDescription)),
-          releaseTime: props.releaseTime || null,
-        });
-      } catch (e) {
-        skipped++;
+        candidates.push({ granularity, value: sensor.value });
+      }
+      for (const candidate of candidates) {
+        if (candidate.granularity !== bestGranularity) continue;
+        totals[roadLabel].sum += candidate.value;
+        totals[roadLabel].count += 1;
       }
     }
 
-    items.sort((a, b) => (b.releaseTime || "").localeCompare(a.releaseTime || ""));
+    const roads = ROADS.map((road) => {
+      const totalsForRoad = totals[road.label];
+      if (!totalsForRoad || totalsForRoad.count === 0) {
+        return { road: road.label, avgSpeed: null, level: "unknown", levelLabel: "No data", stationCount: 0 };
+      }
+      const avgSpeed = Math.round(totalsForRoad.sum / totalsForRoad.count);
+      const classification = classifySpeed(avgSpeed);
+      return {
+        road: road.label,
+        avgSpeed: avgSpeed,
+        level: classification.level,
+        levelLabel: classification.label,
+        stationCount: totalsForRoad.count,
+      };
+    });
 
-    const payload = {
-      items: items.slice(0, MAX_ITEMS),
-      updatedTime: data.dataUpdatedTime || null,
-    };
+    const payload = { roads: roads, updatedTime: data.dataUpdatedTime || null };
 
     if (debug) {
       payload.debug = {
-        totalFeatures: features.length,
-        matchedBeforeLimit: items.length,
-        skippedWithErrors: skipped,
-        sampleFeature: features[0] || null,
+        totalStationsInMap: Object.keys(stationRoadMap).length,
+        matchedStations: matchedStations,
+        sampleStation: sampleStation,
       };
     }
 
