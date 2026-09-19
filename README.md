@@ -1,31 +1,40 @@
 # home-stop
-HSL home stop — a fixed info-panel page (with two tiny serverless functions) showing live departures for the Vaaralan Talkootie
-stop (V9305) side by side with current weather. Meant to be left running on an old device as a display, not interacted with.
+HSL home stop — a fixed info-panel page (with three tiny serverless functions) showing live departures for the Vaaralan Talkootie
+stop (V9305) side by side with current weather and the Kehä I / Kehä III traffic situation. Meant to be left running on an old
+device as a display, not interacted with.
 
 ## How it works
 
 - `index.html` is the whole UI: no build step, deploy as-is on Vercel. It has no settings, buttons, or forms, and no page title
   or "Updated" text outside the panes — the stop code is hardcoded (`STOP_IDS` in the script), and the only status text ("Updated
-  HH:MM:SS") lives inside the departures pane itself. Departures refresh every 30 seconds; weather refreshes every hour (both
-  intervals are hardcoded at the top of the script).
+  HH:MM:SS") lives inside the departures pane itself. Departures refresh every 30 seconds, weather every hour, and traffic every
+  15 minutes (all three intervals are hardcoded at the top of the script).
 - `api/departures.js` is a Vercel serverless function that calls the Digitransit routing API using an `API_KEY` environment variable,
   so the key never reaches the browser. It accepts either a public HSL stop code (e.g. `V9305`) or a full `gtfsId` (e.g. `HSL:1174509`)
   in the `stop` query parameter — a bare code is resolved to a `gtfsId` via the Digitransit geocoding API first. Add `&debug=1` to see
   the raw geocoding response and resolved gtfsId while diagnosing lookup issues. Returns up to 5 upcoming departures.
 - `api/weather.js` is a Vercel serverless function that proxies Open-Meteo (free, no API key required) for current conditions near
-  Vaarala, Vantaa, plus every remaining hour of the current day (not a fixed count — it stops naturally at midnight since the
-  request only asks for `forecast_days=1`). It geocodes the location name once (cached across warm invocations) and fetches
-  temperature, feels-like, description, wind, humidity, and a small icon category per hour. Add `?debug=1` to see the resolved
-  coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa, not
-  one of the several other Finnish villages with the same name.
-- The weather column is intentionally wider than the departures column (60%/36%) with a large current-temperature number and icon,
-  since that's the point of a kiosk display — legible from across a room, not a compact widget. The weather pane shows just the
-  location name (no "Weather" label) with feels-like/wind/humidity to the right of the big temperature, and the remaining hours of
-  the day as a row of compact icon chips below — no separate "Updated" text in that pane.
+  Vaarala, Vantaa, plus the next 6 hours (`HOURLY_COUNT` in the file — kept short so the hour-chip row stays on one line and the
+  weather pane doesn't grow taller than the other two columns). It geocodes the location name once (cached across warm invocations)
+  and fetches temperature, feels-like, description, wind, humidity, and a small icon category per hour. Add `?debug=1` to see the
+  resolved coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa,
+  not one of the several other Finnish villages with the same name.
+- `api/traffic.js` is a Vercel serverless function that proxies Fintraffic's [Digitraffic](https://www.digitraffic.fi/en/road-traffic/)
+  Traffic Message API (`tie.digitraffic.fi`, free, no API key), filtered to traffic announcements and roadworks on regional road 101
+  (Kehä I) and national road 50 (Kehä III). It returns up to 3 of the most recent matching items with the road label, a truncated
+  Finnish-language description, and a release time. **The exact Digitraffic JSON schema could not be verified live from the
+  environment this was written in** (that domain isn't reachable from there), so the road-number extraction in
+  `roadLabelForAnnouncement()` is based on documented field names (`locationDetails.roadAddressLocation.primaryPoint/secondaryPoint.roadAddress.road`)
+  and defensively skips any announcement it can't parse rather than failing the whole request. Check `/api/traffic?debug=1` once
+  deployed — it echoes a raw sample feature — and adjust the field paths in `traffic.js` if Digitraffic's actual shape differs.
+- The three columns (departures / weather / traffic, 26%/40%/34%) sit side by side in one row so the whole page fits on screen
+  without scrolling; they only stack vertically below 480px width. The weather column is still the widest, with a large
+  current-temperature number and icon, since that's the point of a kiosk display — legible from across a room, not a compact widget.
 - Weather icons are hand-built inline SVG shapes (sun/cloud/rain/snow/thunder), not emoji — see Old-device compatibility below.
 
-To change the stop shown or either refresh interval, edit the constants at the top of the `<script>` in `index.html` and redeploy —
-there is intentionally no runtime configuration UI.
+To change the stop shown, the tracked roads, or any refresh interval, edit the constants at the top of the `<script>` in
+`index.html` (or the matching constants in `api/weather.js` / `api/traffic.js`) and redeploy — there is intentionally no runtime
+configuration UI.
 
 ### Old-device compatibility
 
@@ -49,9 +58,11 @@ on Vercel's Node runtime, not on the device, so they're free to use modern JS.
 1. In the Vercel project settings, add an **Environment Variable** named `API_KEY` with your Digitransit routing API subscription key
    (get one free at https://digitransit.fi/en/developers/api-registration/). A GitHub Actions repository secret alone is not visible
    to the Vercel runtime — it must also exist as a Vercel environment variable (either add it directly in Vercel, or have your deploy
-   workflow pass it through). No key is needed for weather — Open-Meteo is free and unauthenticated.
+   workflow pass it through). No key is needed for weather or traffic — Open-Meteo and Digitraffic are both free and unauthenticated.
 2. Deploy this repo to Vercel (import the existing GitHub repo, don't let it clone into a new one).
-3. Open the deployed page — it shows departures for `V9305` and current weather immediately, no configuration needed.
+3. Open the deployed page — it shows departures for `V9305`, current weather, and the Kehä I / Kehä III traffic situation
+   immediately, no configuration needed. If the traffic pane shows an error or stays empty, hit `/api/traffic?debug=1` and check
+   `sampleFeature` against the field paths in `api/traffic.js` (see the note above about the schema not being verified pre-deploy).
 
 ## Turning the device into a kiosk
 
