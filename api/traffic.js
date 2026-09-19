@@ -34,14 +34,26 @@ function roadLabelForAnnouncement(announcement) {
 }
 
 // Prefer the Finnish-language copy of an announcement (Digitraffic ships one
-// per language); fall back to whatever is first.
+// per language, with the language code seen as "FI" in production); fall
+// back to whatever is first.
 function pickText(announcements) {
-  return announcements.find((a) => a.language === "fi") || announcements[0] || {};
+  return (
+    announcements.find((a) => (a.language || "").toUpperCase() === "FI") ||
+    announcements[0] ||
+    {}
+  );
 }
 
 function truncate(text) {
   if (!text || text.length <= DESCRIPTION_MAX_LENGTH) return text;
   return text.slice(0, DESCRIPTION_MAX_LENGTH - 1).trim() + "…";
+}
+
+// Digitraffic's free-text fields come with literal newlines and stray
+// trailing spaces (e.g. "Tie 101, eli Kehä I, Helsinki. Tietyö. ").
+function cleanText(text) {
+  if (!text) return text;
+  return text.replace(/\s*\n+\s*/g, " ").replace(/\s+/g, " ").trim();
 }
 
 module.exports = async function handler(req, res) {
@@ -73,11 +85,22 @@ module.exports = async function handler(req, res) {
         if (!road) continue;
 
         const text = pickText(announcements);
+        // "comment" carries the human-written incident summary when present
+        // (mainly TRAFFIC_ANNOUNCEMENT); ROAD_WORK items instead put the
+        // useful, item-specific detail in location.description, since
+        // additionalInformation is just a generic boilerplate URL repeated
+        // on every message.
+        const rawDescription =
+          text.comment ||
+          (text.location && text.location.description) ||
+          text.additionalInformation ||
+          text.title ||
+          null;
         items.push({
           road: road,
           situationType: props.situationType,
-          title: text.title || null,
-          description: truncate(text.comment || text.additionalInformation || text.title || null),
+          title: cleanText(text.title) || null,
+          description: truncate(cleanText(rawDescription)),
           releaseTime: props.releaseTime || null,
         });
       } catch (e) {
