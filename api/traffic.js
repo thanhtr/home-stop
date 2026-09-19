@@ -1,4 +1,7 @@
-const STATIONS_URL = "https://tie.digitraffic.fi/api/tms/v1/stations";
+// /api/tms/v1/stations turned out to be a slim endpoint with no road
+// address at all (id/tmsNumber/name/bearing/collectionStatus/state only,
+// confirmed live) -- road numbers live in the richer v3 metadata endpoint.
+const STATIONS_URL = "https://tie.digitraffic.fi/api/v3/metadata/tms-stations";
 const STATIONS_DATA_URL = "https://tie.digitraffic.fi/api/tms/v1/stations/data";
 
 // Kehä I is signed as regional road 101, Kehä III as national road 50.
@@ -11,6 +14,27 @@ const ROADS = [
 // which road changes essentially never, unlike the live speed readings.
 let cachedStationRoadMap = null;
 let cachedStationDebugInfo = null;
+
+// The exact property name for a station's road number on the v3 metadata
+// endpoint isn't verified live (see README) -- try the plausible variants.
+function extractRoadNumber(props) {
+  if (props.roadAddress && typeof props.roadAddress.road === "number") {
+    return props.roadAddress.road;
+  }
+  if (typeof props.roadNumber === "number") return props.roadNumber;
+  if (typeof props.road_number === "number") return props.road_number;
+  return null;
+}
+
+// Likewise for the station identifier -- collect every plausible id field so
+// whichever one /stations/data actually keys its entries by still matches.
+function extractStationIds(props) {
+  const ids = [];
+  if (props.id != null) ids.push(props.id);
+  if (props.tmsNumber != null) ids.push(props.tmsNumber);
+  if (props.roadStationId != null) ids.push(props.roadStationId);
+  return ids;
+}
 
 async function resolveStationRoadMap() {
   if (cachedStationRoadMap) {
@@ -26,18 +50,16 @@ async function resolveStationRoadMap() {
 
   const map = {};
   const roadNumbersSeen = new Set();
-  let featuresWithId = 0;
 
   for (const feature of features) {
     const props = feature.properties || {};
-    if (props.id != null) featuresWithId++;
-
-    const roadNumber = props.roadAddress && props.roadAddress.road;
+    const roadNumber = extractRoadNumber(props);
     if (typeof roadNumber === "number") roadNumbersSeen.add(roadNumber);
 
     const match = ROADS.find((r) => r.number === roadNumber);
-    if (match && props.id != null) {
-      map[props.id] = match.label;
+    if (!match) continue;
+    for (const id of extractStationIds(props)) {
+      map[id] = match.label;
     }
   }
 
@@ -47,7 +69,6 @@ async function resolveStationRoadMap() {
   // empty (see README on the TMS schema not being verified pre-deploy).
   cachedStationDebugInfo = {
     totalFeatures: features.length,
-    featuresWithId: featuresWithId,
     roadNumbersSeen: Array.from(roadNumbersSeen).sort((a, b) => a - b),
     sampleFeature: features[0] || null,
   };
@@ -101,14 +122,14 @@ module.exports = async function handler(req, res) {
     }
 
     let matchedStations = 0;
-    let sampleStation = null;
+    let sampleMatchedStation = null;
 
     for (const station of stations) {
       const stationId = station.id != null ? station.id : station.tmsNumber;
       const roadLabel = stationRoadMap[stationId];
       if (!roadLabel) continue;
       matchedStations++;
-      if (!sampleStation) sampleStation = station;
+      if (!sampleMatchedStation) sampleMatchedStation = station;
 
       const sensorValues = station.sensorValues || [];
       let bestGranularity = null;
@@ -150,7 +171,11 @@ module.exports = async function handler(req, res) {
       payload.debug = {
         totalStationsInMap: Object.keys(stationRoadMap).length,
         matchedStations: matchedStations,
-        sampleStation: sampleStation,
+        sampleMatchedStation: sampleMatchedStation,
+        // Regardless of whether matching worked, so a live-data shape
+        // mismatch (station id field, sensorValues naming) is visible in
+        // the same debug round instead of needing another one.
+        sampleLiveStation: stations[0] || null,
         stationMetadata: cachedStationDebugInfo,
       };
     }
