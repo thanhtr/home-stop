@@ -1,31 +1,59 @@
 # home-stop
-HSL home stop — a fixed info-panel page (with two tiny serverless functions) showing live departures for the Vaaralan Talkootie
-stop (V9305) side by side with current weather. Meant to be left running on an old device as a display, not interacted with.
+HSL home stop — a fixed info-panel page (with three tiny serverless functions) showing live departures for the Vaaralan Talkootie
+stop (V9305) side by side with current weather and the general traffic load on Kehä I / Kehä III. Meant to be left running on an
+old device as a display, not interacted with.
 
 ## How it works
 
 - `index.html` is the whole UI: no build step, deploy as-is on Vercel. It has no settings, buttons, or forms, and no page title
   or "Updated" text outside the panes — the stop code is hardcoded (`STOP_IDS` in the script), and the only status text ("Updated
-  HH:MM:SS") lives inside the departures pane itself. Departures refresh every 30 seconds; weather refreshes every hour (both
-  intervals are hardcoded at the top of the script).
+  HH:MM:SS") lives inside the departures pane itself. Departures refresh every 30 seconds, weather every hour, and traffic every
+  15 minutes (all three intervals are hardcoded at the top of the script).
 - `api/departures.js` is a Vercel serverless function that calls the Digitransit routing API using an `API_KEY` environment variable,
   so the key never reaches the browser. It accepts either a public HSL stop code (e.g. `V9305`) or a full `gtfsId` (e.g. `HSL:1174509`)
   in the `stop` query parameter — a bare code is resolved to a `gtfsId` via the Digitransit geocoding API first. Add `&debug=1` to see
   the raw geocoding response and resolved gtfsId while diagnosing lookup issues. Returns up to 5 upcoming departures.
 - `api/weather.js` is a Vercel serverless function that proxies Open-Meteo (free, no API key required) for current conditions near
-  Vaarala, Vantaa, plus every remaining hour of the current day (not a fixed count — it stops naturally at midnight since the
-  request only asks for `forecast_days=1`). It geocodes the location name once (cached across warm invocations) and fetches
-  temperature, feels-like, description, wind, humidity, and a small icon category per hour. Add `?debug=1` to see the resolved
-  coordinates and raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa, not
-  one of the several other Finnish villages with the same name.
-- The weather column is intentionally wider than the departures column (60%/36%) with a large current-temperature number and icon,
-  since that's the point of a kiosk display — legible from across a room, not a compact widget. The weather pane shows just the
-  location name (no "Weather" label) with feels-like/wind/humidity to the right of the big temperature, and the remaining hours of
-  the day as a row of compact icon chips below — no separate "Updated" text in that pane.
+  Vaarala, Vantaa, plus the next 12 hours (`HOURLY_COUNT` in the file; the hour-chip row wraps onto a second line of 6 past that,
+  per `.hour-chip`'s 16%-width CSS). It geocodes the location name once (cached across warm invocations) and fetches temperature,
+  feels-like, description, wind, humidity, and a small icon category per hour. Add `?debug=1` to see the resolved coordinates and
+  raw geocoding results — already verified against production to resolve to the correct Vaarala in Vantaa, not one of the several
+  other Finnish villages with the same name.
+- `api/traffic.js` is a Vercel serverless function that proxies Fintraffic's [Digitraffic](https://www.digitraffic.fi/en/road-traffic/)
+  TMS ("LAM") road sensor data (`tie.digitraffic.fi`, free, no API key) — the same real-time speed/volume feed behind Fintraffic's own
+  traffic map. Rather than listing individual incidents, it shows a general traffic-load reading per road (`ROADS` in the file):
+  regional road 101 (Kehä I), national road 50 (Kehä III), and national road 4 (E75, the Helsinki–Lahti–north corridor — only its
+  Helsinki-metro end falls inside the bounding box below, which is what's relevant here anyway). Each is classified from its average
+  current speed as Free flow (≥70 km/h) / Slow (45–69) / Congested (<45). This answers "how's the road right now", which is more
+  useful for an end-to-end drive than a specific announcement, at the cost of being a road-wide average that can smooth over a jam on
+  just one stretch. Adding another road is just another `{ number, label }` entry in `ROADS` — the lookup and averaging are generic
+  over however many are listed.
+  - Getting the road number per station took two rounds against live production data: `/api/tms/v1/stations` (the station list) turned
+    out to carry no road address at all across any of its ~519 nationwide stations (confirmed live), and a guessed `/api/v3/metadata/…`
+    replacement 404'd. The road address only exists on the single-station detail endpoint, `/api/tms/v1/stations/{id}`, under
+    `properties.roadAddress.roadNumber` (confirmed live against station 89) — fetching that for every station nationwide on each cold
+    start would be excessive, so `resolveStationRoadMap()` first narrows the station list to a generous Helsinki-metro bounding box
+    (`HELSINKI_BBOX`, using the list endpoint's coordinates) and only fetches detail for those candidates, cached across warm
+    invocations.
+  - The live speed data, from `/api/tms/v1/stations/data`, is now verified against production too: each station reports sensors named
+    `KESKINOPEUS_{5,60}MIN_{LIUKUVA,KIINTEA}_SUUNTA{1,2}` (Finnish for "average speed, N-min rolling/fixed, direction 1/2"), but also a
+    same-named `..._VVAPAAS1/2` variant with unit `"***"` that isn't a speed at all — some free-flow-speed ratio — which name-only
+    matching wrongly averaged in alongside the real numbers at first. `isSpeedSensor()` now also requires `unit === "km/h"`, which
+    reliably excludes it. Check `/api/traffic?debug=1` if numbers ever look off again — `sampleMatchedStation` shows every sensor a
+    real matched station reports, and `stationMetadata` shows the bounding-box + road-lookup step.
+- Departures and weather sit side by side in a top row (36%/64%, the weather column wider for its large current-temperature number
+  and icon). Traffic isn't its own pane — it's a compact one-line strip (a colored dot + road name + speed per road, no title, no
+  units) sitting just below the weather card, as its own element (`#trafficCol`, a sibling of `#weatherCol`) rather than nested
+  inside the card's white box, though both live in the same 64%-wide column, since it's a quick glance rather than something that
+  needs its own panel. The strip's roads are laid out as equal-width table cells spread across that full column width (rather than
+  clustered on the left), and it stacks each road onto its own line below 480px width, same as the top row. Departures and weather use large, high-contrast text —
+  this is a kiosk meant to be read from across a room, not a compact widget — while traffic stays deliberately small since it's a
+  secondary glance, not a primary pane. The whole page fits on screen without scrolling.
 - Weather icons are hand-built inline SVG shapes (sun/cloud/rain/snow/thunder), not emoji — see Old-device compatibility below.
 
-To change the stop shown or either refresh interval, edit the constants at the top of the `<script>` in `index.html` and redeploy —
-there is intentionally no runtime configuration UI.
+To change the stop shown, the tracked roads, or any refresh interval, edit the constants at the top of the `<script>` in
+`index.html` (or the matching constants in `api/weather.js` / `api/traffic.js`) and redeploy — there is intentionally no runtime
+configuration UI.
 
 ### Old-device compatibility
 
@@ -49,9 +77,12 @@ on Vercel's Node runtime, not on the device, so they're free to use modern JS.
 1. In the Vercel project settings, add an **Environment Variable** named `API_KEY` with your Digitransit routing API subscription key
    (get one free at https://digitransit.fi/en/developers/api-registration/). A GitHub Actions repository secret alone is not visible
    to the Vercel runtime — it must also exist as a Vercel environment variable (either add it directly in Vercel, or have your deploy
-   workflow pass it through). No key is needed for weather — Open-Meteo is free and unauthenticated.
+   workflow pass it through). No key is needed for weather or traffic — Open-Meteo and Digitraffic are both free and unauthenticated.
 2. Deploy this repo to Vercel (import the existing GitHub repo, don't let it clone into a new one).
-3. Open the deployed page — it shows departures for `V9305` and current weather immediately, no configuration needed.
+3. Open the deployed page — it shows departures for `V9305`, current weather, and the Kehä I / Kehä III traffic load immediately,
+   no configuration needed. If the traffic pane shows "No data" or an error, hit `/api/traffic?debug=1` and check `matchedStations`,
+   `stationMetadata`, and `sampleLiveStation` against the field names in `api/traffic.js` (see the note above about the TMS schema
+   not being fully verified pre-deploy).
 
 ## Turning the device into a kiosk
 
