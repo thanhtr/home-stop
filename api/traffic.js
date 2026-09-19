@@ -10,6 +10,7 @@ const ROADS = [
 // Cached across warm serverless invocations -- which TMS station sits on
 // which road changes essentially never, unlike the live speed readings.
 let cachedStationRoadMap = null;
+let cachedStationDebugInfo = null;
 
 async function resolveStationRoadMap() {
   if (cachedStationRoadMap) {
@@ -24,15 +25,32 @@ async function resolveStationRoadMap() {
   const features = data.features || [];
 
   const map = {};
+  const roadNumbersSeen = new Set();
+  let featuresWithId = 0;
+
   for (const feature of features) {
     const props = feature.properties || {};
+    if (props.id != null) featuresWithId++;
+
     const roadNumber = props.roadAddress && props.roadAddress.road;
+    if (typeof roadNumber === "number") roadNumbersSeen.add(roadNumber);
+
     const match = ROADS.find((r) => r.number === roadNumber);
     if (match && props.id != null) {
       map[props.id] = match.label;
     }
   }
+
   cachedStationRoadMap = map;
+  // Not returned to the client unless ?debug=1 -- lets us see the actual
+  // station metadata shape without guessing further if matching comes up
+  // empty (see README on the TMS schema not being verified pre-deploy).
+  cachedStationDebugInfo = {
+    totalFeatures: features.length,
+    featuresWithId: featuresWithId,
+    roadNumbersSeen: Array.from(roadNumbersSeen).sort((a, b) => a - b),
+    sampleFeature: features[0] || null,
+  };
   return map;
 }
 
@@ -133,6 +151,7 @@ module.exports = async function handler(req, res) {
         totalStationsInMap: Object.keys(stationRoadMap).length,
         matchedStations: matchedStations,
         sampleStation: sampleStation,
+        stationMetadata: cachedStationDebugInfo,
       };
     }
 
